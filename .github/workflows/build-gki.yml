@@ -176,9 +176,9 @@ jobs:
         # Настраиваем anykernel.sh для GKI
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS) /" AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
-        # FIX #6: block=auto — правильное значение для GKI
-        sed -i 's/block=.*/block=auto/' AnyKernel3/anykernel.sh
         sed -i 's/is_slot_device=0/is_slot_device=auto/' AnyKernel3/anykernel.sh
+        # Прямой путь к boot-разделу (Qualcomm by-name)
+        sed -i 's|block=.*|block=/dev/block/by-name/boot;|' AnyKernel3/anykernel.sh
         
         # FIX #5: Универсальный поиск Image вместо hardcoded пути
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
