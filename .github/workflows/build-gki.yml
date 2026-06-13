@@ -108,14 +108,33 @@ jobs:
         # GKI для ARM64 обычно собирается через bazel
         tools/bazel build //common:kernel_aarch64
 
-    - name: Prepare Artifacts
+    - name: Pack into AnyKernel3
       run: |
         mkdir -p output
         cp kernel_workspace/bazel-bin/common/kernel_aarch64/Image output/
-        # Если есть AnyKernel3, здесь можно было бы упаковать в zip
+        
+        # Клонируем AnyKernel3
+        cd kernel_workspace
+        git clone https://github.com/osm0sis/AnyKernel3.git
+        cd AnyKernel3
+        
+        # Удаляем лишнее
+        rm -rf .git README.md *placeholder
+        
+        # Копируем собранное ядро
+        cp ../bazel-bin/common/kernel_aarch64/Image .
+        
+        # Настраиваем anykernel.sh для GKI
+        sed -i 's/kernel.string=.*/kernel.string=Custom GKI 5.15 (SukiSU-Ultra + SUSFS) /' anykernel.sh
+        sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
+        sed -i 's/block=.*/block=auto/' anykernel.sh
+        sed -i 's/is_slot_device=0;/is_slot_device=1;/' anykernel.sh
+        
+        # Упаковываем в ZIP
+        zip -r9 ../../output/AnyKernel3-Xiaomi-13-Pro-GKI.zip *
 
-    - name: Upload Image Artifact
+    - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Image-Xiaomi-13-Pro-GKI-5.15
-        path: output/Image
+        name: AnyKernel3-Xiaomi-13-Pro-GKI-5.15
+        path: output/AnyKernel3-Xiaomi-13-Pro-GKI.zip
