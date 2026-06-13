@@ -211,52 +211,15 @@ jobs:
     - name: Package with AnyKernel3
       run: |
         cd ~/kernel_workspace
-        # Всегда свежий клон (старый удалён в Clean Workspace)
-        git clone https://github.com/osm0sis/AnyKernel3.git -b master AnyKernel3
+        # Клонируем собственный форк AnyKernel3
+        git clone https://github.com/MoonShadowKeeper/AnyKernel3.git -b master AnyKernel3
         
         # Удаляем лишнее
-        rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder AnyKernel3/ramdisk AnyKernel3/patch AnyKernel3/anykernel.sh
+        rm -rf AnyKernel3/.git
         
-        # Создаем чистый anykernel.sh для GKI
-        cat << 'EOF' | sed 's/^[[:space:]]\{8\}//' > AnyKernel3/anykernel.sh
-        ### AnyKernel3 Ramdisk Mod Script
-        ## osm0sis @ xda-developers
+        # Динамически настраиваем anykernel.sh под текущую версию GKI ядра
+        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
         
-        ### AnyKernel setup
-        # global properties
-        properties() { '
-        kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)
-        do.devicecheck=0
-        do.modules=0
-        do.systemless=1
-        do.cleanup=1
-        do.cleanuponabort=0
-        device.name1=
-        device.name2=
-        device.name3=
-        device.name4=
-        device.name5=
-        supported.versions=
-        supported.patchlevels=
-        supported.vendorpatchlevels=
-        '; } # end properties
-        
-        ### AnyKernel install
-        ## boot shell variables
-        block=boot;
-        is_slot_device=auto;
-        ramdisk_compression=auto;
-        patch_vbmeta_flag=auto;
-        
-        # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
-        . tools/ak3-core.sh;
-        
-        # boot install
-        split_boot;
-        flash_boot;
-        ## end boot install
-        EOF
-
         # Копируем скомпилированный образ
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
         if [ -z "$KERNEL_IMAGE" ]; then
