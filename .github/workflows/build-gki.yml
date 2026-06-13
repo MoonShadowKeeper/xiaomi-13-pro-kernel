@@ -73,39 +73,19 @@ jobs:
         # Обход строгой проверки defconfig (как делает Wild GKI)
         sed -i 's/check_defconfig//' build.config.gki
         
-        # Добавляем нужные нам модули в конфиг (BBR, Wireguard и т.д.)
+        # Добавляем нужные нам модули в конфиг
         cat <<EOF >> arch/arm64/configs/gki_defconfig
-
-        # --- Wild GKI Networking & Features ---
+        
+        # --- Network Features ---
         CONFIG_TCP_CONG_BBR=y
         CONFIG_DEFAULT_BBR=y
+        CONFIG_NET_SCH_FQ=y
         CONFIG_WIREGUARD=y
-        CONFIG_IP_SET=y
-        CONFIG_IP_SET_MAX=256
-        CONFIG_IP_SET_BITMAP_IP=y
-        CONFIG_IP_SET_BITMAP_IPMAC=y
-        CONFIG_IP_SET_BITMAP_PORT=y
-        CONFIG_IP_SET_HASH_IP=y
-        CONFIG_IP_SET_HASH_IPMARK=y
-        CONFIG_IP_SET_HASH_IPPORT=y
-        CONFIG_IP_SET_HASH_IPPORTIP=y
-        CONFIG_IP_SET_HASH_IPPORTNET=y
-        CONFIG_IP_SET_HASH_MAC=y
-        CONFIG_IP_SET_HASH_NETPORTNET=y
-        CONFIG_IP_SET_HASH_NET=y
-        CONFIG_IP_SET_HASH_NETNET=y
-        CONFIG_IP_SET_HASH_NETPORT=y
-        CONFIG_IP_SET_HASH_NETIFACE=y
-        CONFIG_IP_SET_LIST_SET=y
-        CONFIG_IP6_NF_NAT=y
-        CONFIG_NETFILTER_XT_TARGET_HL=y
-        CONFIG_NETFILTER_XT_MATCH_HL=y
         
         # --- File System Features ---
         CONFIG_TMPFS_XATTR=y
         CONFIG_TMPFS_POSIX_ACL=y
         CONFIG_NTFS3_FS=y
-        CONFIG_NTFS3_LZX_XPRESS=y
         CONFIG_NTFS3_FS_POSIX_ACL=y
         CONFIG_EXFAT_FS=y
         CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"
@@ -113,27 +93,20 @@ jobs:
         # --- Memory Management (MGLRU & DAMON) ---
         CONFIG_LRU_GEN=y
         CONFIG_LRU_GEN_ENABLED=y
+        CONFIG_LRU_GEN_STATS=y
         CONFIG_DAMON=y
         CONFIG_DAMON_VADDR=y
         CONFIG_DAMON_PADDR=y
-        CONFIG_DAMON_SYSFS=y
         CONFIG_DAMON_RECLAIM=y
-        CONFIG_DAMON_LRU_SORT=y
-        
-        # --- Disable Debugs (Performance Boost) ---
-        CONFIG_PROVE_LOCKING=n
-        CONFIG_DEBUG_KMEMLEAK=n
-        CONFIG_DEBUG_SPINLOCK=n
-        CONFIG_DEBUG_MUTEXES=n
-        CONFIG_SCHED_DEBUG=n
-        CONFIG_DEBUG_PREEMPT=n
         EOF
 
     - name: Build the Kernel
+      working-directory: kernel_workspace
       run: |
-        cd ~/kernel_workspace
-        # Так как исходники лежат в ~/kernel_workspace, кэш Bazel сохраняется автоматически!
         LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
+        
+        echo "=== Config Check ==="
+        grep -E "LRU_GEN|DAMON|BBR|WIREGUARD|NTFS3|EXFAT|NET_SCH_FQ" out/*/.config || true
 
     - name: Package with AnyKernel3
       run: |
