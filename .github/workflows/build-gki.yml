@@ -127,35 +127,34 @@ jobs:
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
         
         # Добавляем нужные модули в конфиг
-        cat <<'KCONFIG' >> arch/arm64/configs/gki_defconfig
-
-# --- Network Features ---
-CONFIG_TCP_CONG_BBR=y
-CONFIG_DEFAULT_BBR=y
-CONFIG_NET_SCH_FQ=y
-CONFIG_WIREGUARD=y
-
-# --- File System Features ---
-CONFIG_TMPFS_XATTR=y
-CONFIG_TMPFS_POSIX_ACL=y
-CONFIG_NTFS3_FS=y
-CONFIG_NTFS3_FS_POSIX_ACL=y
-CONFIG_EXFAT_FS=y
-CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"
-
-# --- Memory Management (MGLRU & DAMON) ---
-CONFIG_LRU_GEN=y
-CONFIG_LRU_GEN_ENABLED=y
-CONFIG_LRU_GEN_STATS=y
-CONFIG_DAMON=y
-CONFIG_DAMON_VADDR=y
-CONFIG_DAMON_PADDR=y
-CONFIG_DAMON_RECLAIM=y
-
-# --- ZRAM ---
-CONFIG_ZSMALLOC=y
-CONFIG_ZRAM=y
-KCONFIG
+        DEFCONFIG=arch/arm64/configs/gki_defconfig
+        echo "" >> $DEFCONFIG
+        echo "# --- Network Features ---" >> $DEFCONFIG
+        echo "CONFIG_TCP_CONG_BBR=y" >> $DEFCONFIG
+        echo "CONFIG_DEFAULT_BBR=y" >> $DEFCONFIG
+        echo "CONFIG_NET_SCH_FQ=y" >> $DEFCONFIG
+        echo "CONFIG_WIREGUARD=y" >> $DEFCONFIG
+        echo "" >> $DEFCONFIG
+        echo "# --- File System Features ---" >> $DEFCONFIG
+        echo "CONFIG_TMPFS_XATTR=y" >> $DEFCONFIG
+        echo "CONFIG_TMPFS_POSIX_ACL=y" >> $DEFCONFIG
+        echo "CONFIG_NTFS3_FS=y" >> $DEFCONFIG
+        echo "CONFIG_NTFS3_FS_POSIX_ACL=y" >> $DEFCONFIG
+        echo "CONFIG_EXFAT_FS=y" >> $DEFCONFIG
+        echo 'CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"' >> $DEFCONFIG
+        echo "" >> $DEFCONFIG
+        echo "# --- Memory Management (MGLRU & DAMON) ---" >> $DEFCONFIG
+        echo "CONFIG_LRU_GEN=y" >> $DEFCONFIG
+        echo "CONFIG_LRU_GEN_ENABLED=y" >> $DEFCONFIG
+        echo "CONFIG_LRU_GEN_STATS=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON_VADDR=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON_PADDR=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON_RECLAIM=y" >> $DEFCONFIG
+        echo "" >> $DEFCONFIG
+        echo "# --- ZRAM ---" >> $DEFCONFIG
+        echo "CONFIG_ZSMALLOC=y" >> $DEFCONFIG
+        echo "CONFIG_ZRAM=y" >> $DEFCONFIG
 
     - name: Build the Kernel
       run: |
