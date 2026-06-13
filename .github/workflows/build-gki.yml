@@ -45,18 +45,14 @@ jobs:
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
         cd kernel_workspace
-        git clone https://gitlab.com/simonpunk/susfs4ksu.git
+        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
         cd common
         # Копируем исходники SUSFS
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
         cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
         
         # Применяем патч для ядра 5.15
-        patch -p1 < ../susfs4ksu/kernel_patches/5.15/susfs.patch
-        
-        # Обновляем Makefile для SUSFS
-        # В некоторых версиях SUSFS требуется интеграция в Makefile/Kconfig
-        patch -p1 < ../susfs4ksu/kernel_patches/5.15/susfs_ksu.patch || true
+        patch -p1 < ../susfs4ksu/50_add_susfs_in_gki-android13-5.15.patch
 
     - name: Apply Networking and Wild GKI Features
       run: |
