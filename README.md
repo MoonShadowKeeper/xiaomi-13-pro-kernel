@@ -59,6 +59,15 @@
 | ExFAT | `CONFIG_EXFAT_FS=y` | Поддержка ExFAT для флешек и SD-карт |
 | TMPFS ACL | `CONFIG_TMPFS_POSIX_ACL=y` | Нужно для корректной работы модулей KernelSU (Mountify и др.) |
 
+### 🔋 Батарея и энергоэффективность
+
+| Компонент | Kconfig | Описание |
+|-----------|---------|----------|
+| TEO cpuidle | `CONFIG_CPU_IDLE_GOV_TEO=y` | Умный выбор глубины сна для ядер CPU. Меньше ненужных пробуждений |
+| Energy Model | `CONFIG_ENERGY_MODEL=y` | EAS знает энергоцену каждой частоты → задачи на LITTLE-ядрах |
+| MC Scheduling | `CONFIG_SCHED_MC=y` | Задачи пакуются на меньше ядер → остальные уходят в deep idle |
+| [KProfiles](https://github.com/beakthoven/Kprofiles) | `CONFIG_KPROFILES=y` | Переключение режимов Battery/Balanced/Performance через `/sys/kernel/kprofiles/kp_mode` |
+
 ### ⚙️ Сборка
 
 | Параметр | Значение | Описание |
@@ -114,6 +123,13 @@ adb shell cat /proc/swaps
 
 # Проверка WireGuard
 adb shell cat /sys/module/wireguard/version
+
+# Проверка KProfiles
+adb shell cat /sys/kernel/kprofiles/kp_mode
+
+# Переключение KProfiles:
+# 0=Disabled  1=Battery  2=Balanced  3=Performance
+adb shell 'echo 1 > /sys/kernel/kprofiles/kp_mode'  # Battery mode
 ```
 
 ## 📜 Благодарности

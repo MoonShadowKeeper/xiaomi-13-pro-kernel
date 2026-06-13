@@ -116,6 +116,24 @@ jobs:
         cd ~/kernel_workspace/common
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
 
+    - name: Integrate KProfiles (Battery/Balanced/Performance)
+      run: |
+        cd ~/kernel_workspace/common
+        
+        # Клонируем KProfiles в drivers/misc/kprofiles
+        git clone https://github.com/beakthoven/Kprofiles.git drivers/misc/kprofiles
+        rm -rf drivers/misc/kprofiles/.git
+        
+        # Патчим drivers/misc/Kconfig — добавляем source kprofiles
+        if ! grep -q 'kprofiles' drivers/misc/Kconfig; then
+          sed -i '/endmenu/i source "drivers/misc/kprofiles/Kconfig"' drivers/misc/Kconfig
+        fi
+        
+        # Патчим drivers/misc/Makefile — добавляем obj- для kprofiles
+        if ! grep -q 'kprofiles' drivers/misc/Makefile; then
+          echo 'obj-$(CONFIG_KPROFILES) += kprofiles/' >> drivers/misc/Makefile
+        fi
+
     - name: Apply Networking and GKI Features
       run: |
         cd ~/kernel_workspace/common
@@ -160,6 +178,9 @@ jobs:
         echo "CONFIG_CPU_IDLE_GOV_TEO=y" >> $DEFCONFIG
         echo "CONFIG_ENERGY_MODEL=y" >> $DEFCONFIG
         echo "CONFIG_SCHED_MC=y" >> $DEFCONFIG
+        echo "" >> $DEFCONFIG
+        echo "# --- KProfiles (Battery/Balanced/Performance switching) ---" >> $DEFCONFIG
+        echo "CONFIG_KPROFILES=y" >> $DEFCONFIG
 
     - name: Build the Kernel
       run: |
@@ -181,6 +202,7 @@ jobs:
         grep CONFIG_CPU_IDLE_GOV_TEO= out/*/.config || echo "WARN: TEO not found"
         grep CONFIG_ENERGY_MODEL= out/*/.config || echo "WARN: ENERGY_MODEL not found"
         grep CONFIG_SCHED_MC= out/*/.config || echo "WARN: SCHED_MC not found"
+        grep CONFIG_KPROFILES= out/*/.config || echo "WARN: KPROFILES not found"
         
         echo "=== Vendor Compatibility Check ==="
         find out -name "*.symvers" | head
