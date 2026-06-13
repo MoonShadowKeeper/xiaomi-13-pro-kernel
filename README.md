@@ -1,3 +1,5 @@
+[English](README.md) | [Русский](README_ru.md)
+
 # Xiaomi 13 Pro (Nuwa) Custom GKI Kernel
 
 A custom Generic Kernel Image (GKI) built specifically for the Xiaomi 13 Pro (Nuwa). The project focuses on integrating root concealment frameworks and backporting modern memory and networking features while maintaining strict compatibility with vendor modules.
