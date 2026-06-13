@@ -10,7 +10,7 @@ jobs:
     
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Free Disk Space
       run: |
@@ -115,7 +115,7 @@ jobs:
         # Если есть AnyKernel3, здесь можно было бы упаковать в zip
 
     - name: Upload Image Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Image-Xiaomi-13-Pro-GKI-5.15
         path: output/Image
