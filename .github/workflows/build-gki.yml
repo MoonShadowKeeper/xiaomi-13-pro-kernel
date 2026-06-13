@@ -161,12 +161,11 @@ jobs:
         # Копируем скомпилированный образ (Image)
         cp out/${{ env.KERNEL_DIR }}/dist/Image AnyKernel3/
         
-        # Собираем ZIP
-        cd AnyKernel3
-        zip -r9 ../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip *
+        # ВАЖНО: Мы больше не запаковываем в zip вручную,
+        # так как GitHub Actions (upload-artifact) сам создает ZIP из папки!
 
     - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
         name: AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
-        path: ~/kernel_workspace/AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip
+        path: ~/kernel_workspace/AnyKernel3/
