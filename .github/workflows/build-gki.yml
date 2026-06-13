@@ -83,19 +83,25 @@ jobs:
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
         
-        # Убираем --depth=1, чтобы иметь доступ к истории для checkout нужного коммита
+        # Инициализация и синхронизация
         repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }}
         repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
         
+        # Переход на точный коммит
         if [ -n "${{ github.event.inputs.target_commit }}" ]; then
           cd common
           echo "[+] Fetching and checking out exact KMI commit: ${{ github.event.inputs.target_commit }}"
-          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-            git fetch --unshallow origin ${{ env.MANIFEST_BRANCH }} || git fetch origin
-          else
-            git fetch origin ${{ env.MANIFEST_BRANCH }} || git fetch origin
-          fi
+          
+          # В repo-клиенте remote может называться не origin, поэтому фетчим напрямую по URL.
+          # Имя ветки в kernel/common обычно совпадает с MANIFEST_BRANCH без префикса 'common-'
+          PROJECT_BRANCH=$(echo "${{ env.MANIFEST_BRANCH }}" | sed 's/^common-//')
+          
+          # Получаем историю напрямую из официального репозитория Google
+          git fetch https://android.googlesource.com/kernel/common $PROJECT_BRANCH
+          
+          # Переключаемся на нужный коммит
           git checkout ${{ github.event.inputs.target_commit }}
+          
           echo "[+] Successfully checked out commit ${{ github.event.inputs.target_commit }}"
         fi
 
