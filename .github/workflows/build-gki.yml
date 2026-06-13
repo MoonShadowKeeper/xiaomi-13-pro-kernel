@@ -11,6 +11,10 @@ on:
         options:
           - Xiaomi-13-Pro
           - Xiaomi-14T-Pro
+      kmi_version:
+        description: 'Specific KMI Branch (e.g. common-android14-6.1-2024-04). Leave empty for latest.'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -24,17 +28,23 @@ jobs:
     - name: Set Environment Variables
       run: |
         if [ "${{ github.event.inputs.device }}" == "Xiaomi-14T-Pro" ]; then
-          echo "MANIFEST_BRANCH=common-android14-6.1" >> $GITHUB_ENV
+          DEFAULT_MANIFEST="common-android14-6.1"
           echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
           echo "KERNEL_DIR=android14-6.1" >> $GITHUB_ENV
           echo "GKI_VERSION=6.1" >> $GITHUB_ENV
         else
-          echo "MANIFEST_BRANCH=common-android13-5.15" >> $GITHUB_ENV
+          DEFAULT_MANIFEST="common-android13-5.15"
           echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
           echo "KERNEL_DIR=android13-5.15" >> $GITHUB_ENV
           echo "GKI_VERSION=5.15" >> $GITHUB_ENV
+        fi
+        
+        if [ -n "${{ github.event.inputs.kmi_version }}" ]; then
+          echo "MANIFEST_BRANCH=${{ github.event.inputs.kmi_version }}" >> $GITHUB_ENV
+        else
+          echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
         fi
 
     - name: Free Disk Space
