@@ -79,12 +79,14 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
         fi
         cd common
-        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
-        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
         
-        # Откатываем файлы перед патчем (кэш)
+        # FIX #1: Сначала чистим дерево, ПОТОМ копируем файлы и патчим
         git reset --hard HEAD
         git clean -fdx
+        
+        # Теперь копируем SUSFS-файлы в чистое дерево
+        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
+        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
         
         # Применяем патч (игнорируем ошибки hunks)
         patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }} || true
@@ -105,8 +107,9 @@ jobs:
       run: |
         cd ~/kernel_workspace/common
         
-        # Обход строгой проверки defconfig (как делает Wild GKI)
-        sed -i 's/check_defconfig//' build.config.gki
+        # FIX #2: Используем SKIP_DEFCONFIG_CHECK вместо опасного sed
+        export SKIP_DEFCONFIG_CHECK=1
+        echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
         
         # Добавляем нужные нам модули в конфиг
         cat <<EOF >> arch/arm64/configs/gki_defconfig
@@ -138,21 +141,12 @@ jobs:
         CONFIG_ZSMALLOC=y
         CONFIG_ZRAM=y
         EOF
-        
-        # Включаем эксклюзивные фичи для ядра 6.1 (Xiaomi 14T Pro)
-        if [ "${{ github.event.inputs.device }}" == "Xiaomi-14T-Pro" ]; then
-          cat <<EOF >> arch/arm64/configs/gki_defconfig
-        # --- Kernel 6.1 Exclusive Features ---
-        CONFIG_DAMON_SYSFS=y
-        CONFIG_DAMON_LRU_SORT=y
-        CONFIG_NTFS3_LZX_XPRESS=y
-        EOF
-        fi
 
     - name: Build the Kernel
       run: |
         cd ~/kernel_workspace
-        LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
+        # FIX #2 (продолжение): передаём SKIP_DEFCONFIG_CHECK в build.sh
+        SKIP_DEFCONFIG_CHECK=1 LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
         
         echo "=== Kernel Features Verification ==="
         grep CONFIG_LRU_GEN= out/*/.config || true
@@ -182,14 +176,19 @@ jobs:
         # Настраиваем anykernel.sh для GKI
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS) /" AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
-        sed -i 's/block=.*/block=boot/' AnyKernel3/anykernel.sh
+        # FIX #6: block=auto — правильное значение для GKI
+        sed -i 's/block=.*/block=auto/' AnyKernel3/anykernel.sh
         sed -i 's/is_slot_device=0/is_slot_device=auto/' AnyKernel3/anykernel.sh
         
-        # Копируем скомпилированный образ (Image)
-        cp out/${{ env.OUT_VERSION_DIR }}/dist/Image AnyKernel3/
-        
-        # ВАЖНО: Мы больше не запаковываем в zip вручную,
-        # так как GitHub Actions (upload-artifact) сам создает ZIP из папки!
+        # FIX #5: Универсальный поиск Image вместо hardcoded пути
+        KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
+        if [ -z "$KERNEL_IMAGE" ]; then
+          echo "ERROR: Image not found in out/"
+          find out -name "Image" || true
+          exit 1
+        fi
+        echo "Found kernel image at: $KERNEL_IMAGE"
+        cp "$KERNEL_IMAGE" AnyKernel3/
 
     - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
