@@ -61,12 +61,10 @@ jobs:
         # Ручной фикс для fs/proc/task_mmu.c (Hunk #1)
         sed -i 's/#include <asm\/elf.h>/#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux\/susfs_def.h>\n#endif\n\n#include <asm\/elf.h>/g' fs/proc/task_mmu.c
 
-    - name: Apply Sukisu Ultra and KSU SUSFS Patch
+    - name: Apply Sukisu Ultra
       run: |
         cd ~/kernel_workspace/common
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
-        cd KernelSU
-        patch -p1 < ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
 
     - name: Apply Networking and Wild GKI Features
       run: |
