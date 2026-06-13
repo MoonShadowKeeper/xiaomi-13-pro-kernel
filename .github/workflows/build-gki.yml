@@ -21,6 +21,22 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+    - name: Set Environment Variables
+      run: |
+        if [ "${{ github.event.inputs.device }}" == "Xiaomi-14T-Pro" ]; then
+          echo "MANIFEST_BRANCH=common-android14-6.1" >> $GITHUB_ENV
+          echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
+          echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
+          echo "KERNEL_DIR=android14-6.1" >> $GITHUB_ENV
+          echo "GKI_VERSION=6.1" >> $GITHUB_ENV
+        else
+          echo "MANIFEST_BRANCH=common-android13-5.15" >> $GITHUB_ENV
+          echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
+          echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
+          echo "KERNEL_DIR=android13-5.15" >> $GITHUB_ENV
+          echo "GKI_VERSION=5.15" >> $GITHUB_ENV
+        fi
+
     - name: Free Disk Space
       run: |
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
@@ -43,14 +59,14 @@ jobs:
       run: |
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
-        repo init -u https://android.googlesource.com/kernel/manifest -b common-android13-5.15 --depth=1
+        repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
         repo sync -c -j$(nproc) --no-clone-bundle --no-tags --no-clone-bundle
 
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
         cd ~/kernel_workspace
         if [ ! -d "susfs4ksu" ]; then
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
         fi
         cd common
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
@@ -61,7 +77,7 @@ jobs:
         git clean -fdx
         
         # Применяем патч (игнорируем ошибки hunks)
-        patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
+        patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }} || true
         
         # Ручной фикс для fs/namespace.c (Hunk #1)
         sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
@@ -128,19 +144,19 @@ jobs:
         rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
         
         # Настраиваем anykernel.sh для GKI
-        sed -i 's/kernel.string=.*/kernel.string=Custom GKI 5.15 (SukiSU-Ultra + SUSFS) /' AnyKernel3/anykernel.sh
+        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS) /" AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
         sed -i 's/block=.*/block=auto/' AnyKernel3/anykernel.sh
         
         # Копируем скомпилированный образ (Image)
-        cp out/android13-5.15/dist/Image AnyKernel3/
+        cp out/${{ env.KERNEL_DIR }}/dist/Image AnyKernel3/
         
         # Собираем ZIP
         cd AnyKernel3
-        zip -r9 ../AnyKernel3-${{ github.event.inputs.device }}-GKI-5.15.zip *
+        zip -r9 ../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip *
 
     - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: AnyKernel3-${{ github.event.inputs.device }}-GKI-5.15
-        path: ~/kernel_workspace/AnyKernel3-${{ github.event.inputs.device }}-GKI-5.15.zip
+        name: AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
+        path: ~/kernel_workspace/AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip
