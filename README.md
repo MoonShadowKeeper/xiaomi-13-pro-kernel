@@ -1,69 +1,130 @@
 <div align="center">
-  <h1>📱 Кастомное ядро для Xiaomi 13 Pro (Nuwa)</h1>
-  <p><b>Строгое, чистое и высокопроизводительное GKI-ядро (SukiSU-Ultra + SUSFS + MGLRU + DAMON)</b></p>
+  <h1>🌙 MoonShadow Kernel</h1>
+  <p><b>Custom GKI Kernel for Xiaomi 13 Pro & Xiaomi 14T Pro</b></p>
+  <p><i>SukiSU-Ultra · SUSFS · MGLRU · DAMON · BBR · WireGuard</i></p>
   
-  <img src="https://img.shields.io/github/actions/workflow/status/MoonShadowKeeper/xiaomi-13-pro-kernel/build-gki.yml?branch=master&style=for-the-badge&logo=github-actions" alt="Build Status">
-  <img src="https://img.shields.io/badge/Kernel-5.15%20GKI-blue?style=for-the-badge&logo=linux" alt="Kernel Version">
-  <img src="https://img.shields.io/badge/Device-Xiaomi%2013%20Pro-orange?style=for-the-badge" alt="Device">
+  <img src="https://img.shields.io/github/actions/workflow/status/MoonShadowKeeper/xiaomi-13-pro-kernel/build-gki.yml?branch=master&style=for-the-badge&logo=github-actions&label=BUILD" alt="Build Status">
+  <img src="https://img.shields.io/badge/GKI-5.15%20%7C%206.1-blue?style=for-the-badge&logo=linux" alt="Kernel Version">
+  <img src="https://img.shields.io/badge/Devices-Xiaomi%2013%20Pro%20%7C%2014T%20Pro-orange?style=for-the-badge" alt="Devices">
+  <img src="https://img.shields.io/badge/LTO-ThinLTO-green?style=for-the-badge" alt="LTO">
 </div>
 
 ---
 
+## 📋 Поддерживаемые устройства
+
+| Устройство | Кодовое имя | SoC | Ядро | Android |
+|-----------|-------------|-----|------|---------|
+| Xiaomi 13 Pro | nuwa | Snapdragon 8 Gen 2 | GKI 5.15 (android13-5.15) | 13+ |
+| Xiaomi 14T Pro | rothko | Dimensity 9300+ | GKI 6.1 (android14-6.1) | 14+ |
+
 ## 🚀 О проекте
 
-В этом репозитории настроен автоматический пайплайн (GitHub Actions) для компиляции кристально чистого и высокопроизводительного ядра Generic Kernel Image (GKI) для **Xiaomi 13 Pro (Nuwa)** на базе Android 13 (ветка Linux 5.15).
+Автоматизированная сборка чистого GKI-ядра через GitHub Actions на self-hosted runner. Никаких экспериментальных патчей, оверклоков и нестабильных хаков — только проверенные, upstream-совместимые фичи поверх эталонного ядра AOSP.
 
-Конфигурация ядра приведена к строгим стандартам KMI/ABI, без мусорных и экспериментальных опций. Здесь собрано только то, что реально ускоряет устройство и скрывает root, не нарушая стабильность работы стоковой прошивки MIUI/HyperOS.
+**Принципы:**
+- Строгое соответствие KMI/ABI — вендорские модули (Wi-Fi, камера, аудио) работают без изменений
+- Каждая опция проверяется в итоговом `.config` после сборки
+- Отдельные ветки и конфиги для каждого устройства
 
 ## ✨ Ключевые особенности
 
-### 🛡️ Безопасность и Root
-* **[SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra):** Продвинутый форк KernelSU с глубокой интеграцией для обхода агрессивных проверок на root.
-* **SUSFS v2.1.0+ (Spoofing User Space File System):** Значительно усложняет обнаружение root-окружения приложениями и сервисами.
+### 🛡️ Root & Скрытие
+
+| Компонент | Описание |
+|-----------|----------|
+| [SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra) | Продвинутый форк KernelSU с улучшенной интеграцией для обхода проверок на root |
+| [SUSFS v2.1.0+](https://gitlab.com/simonpunk/susfs4ksu) | Spoofing User Space File System — усложняет обнаружение root-окружения приложениями |
 
 ### 🧠 Управление памятью
-* **MGLRU (Multi-Gen LRU):** Современный алгоритм управления памятью от Google, доступный в Android GKI 5.15 и более новых версиях Android. Улучшает многозадачность и снижает количество перезапусков приложений.
-* **DAMON (Data Access MONitor):** Подсистема мониторинга памяти с поддержкой DAMON_RECLAIM для более эффективного освобождения редко используемых страниц памяти.
 
-### 🌐 Сеть (Минимализм и Скорость)
-* **BBR & FQ (`CONFIG_TCP_CONG_BBR` + `CONFIG_NET_SCH_FQ`):** Комбинация контроля перегрузки BBR и планировщика пакетов FQ (Fair Queueing) для улучшенной работы сети при нестабильных соединениях и сниженной задержки в ряде сценариев.
-* **WireGuard:** Встроенная поддержка быстрого VPN-протокола напрямую на уровне ядра.
+| Компонент | Kconfig | Описание |
+|-----------|---------|----------|
+| MGLRU | `CONFIG_LRU_GEN=y` | Multi-Gen LRU от Google. Улучшает многозадачность и снижает количество перезапусков приложений |
+| DAMON | `CONFIG_DAMON=y` | Data Access MONitor с поддержкой `DAMON_RECLAIM` для эффективного освобождения редко используемых страниц |
+| ZRAM | `CONFIG_ZRAM=y` | Сжатие оперативной памяти в RAM (zsmalloc) |
+
+### 🌐 Сеть
+
+| Компонент | Kconfig | Описание |
+|-----------|---------|----------|
+| BBR + FQ | `CONFIG_TCP_CONG_BBR=y` + `CONFIG_NET_SCH_FQ=y` | Контроль перегрузки TCP + планировщик Fair Queueing. Снижает задержку на нестабильных соединениях |
+| WireGuard | `CONFIG_WIREGUARD=y` | Быстрый VPN-протокол на уровне ядра |
 
 ### 📁 Файловые системы
-* **NTFS3 & ExFAT:** Нативная поддержка современных файловых систем. Флешки и внешние диски читаются и пишутся на максимальной скорости без костылей.
-* **TMPFS:** Добавлена поддержка XATTR и POSIX_ACL для корректной работы сложных модулей в KernelSU (таких как Mountify).
+
+| Компонент | Kconfig | Описание |
+|-----------|---------|----------|
+| NTFS3 | `CONFIG_NTFS3_FS=y` | Нативное чтение/запись NTFS-дисков без FUSE |
+| ExFAT | `CONFIG_EXFAT_FS=y` | Поддержка ExFAT для флешек и SD-карт |
+| TMPFS ACL | `CONFIG_TMPFS_POSIX_ACL=y` | Нужно для корректной работы модулей KernelSU (Mountify и др.) |
 
 ### ⚙️ Сборка
-* **ThinLTO (`LTO=thin`):** Оптимизация на этапе связывания (Link-Time Optimization) сохраняет высокую производительность при вменяемом времени компиляции, не ломая GKI ABI.
 
-## 🛠️ Как собирать (Автоматически)
+| Параметр | Значение | Описание |
+|----------|----------|----------|
+| LTO | ThinLTO | Link-Time Optimization без нарушения GKI ABI |
+| Defconfig | AOSP gki_defconfig + наши дополнения | Базовый конфиг Google + только проверенные опции |
 
-Вся работа выполняется через GitHub Actions на self-hosted раннере:
+## 🛠️ Как собрать
 
-1. Перейдите на вкладку [Actions](../../actions) в этом репозитории.
-2. Выберите **Build Custom GKI Kernel for Xiaomi 13 Pro**.
-3. Нажмите **Run workflow**.
-4. Дождитесь завершения (~15-20 минут).
-5. После завершения скачайте артефакт `AnyKernel3-Xiaomi-13-Pro-GKI-5.15` со страницы результатов.
+1. Перейдите на вкладку **[Actions](../../actions)**
+2. Выберите **Build Custom GKI Kernel**
+3. Нажмите **Run workflow**
+4. Выберите устройство: `Xiaomi-13-Pro` или `Xiaomi-14T-Pro`
+5. *(Опционально)* Укажите конкретную KMI-ветку (например `common-android13-5.15-2024-04`)
+6. Дождитесь завершения (~15–20 минут)
+7. Скачайте артефакт `AnyKernel3-<Device>-GKI-<version>` со страницы результатов
 
 ## 📦 Установка
 
-> ⚠️ **КРИТИЧЕСКИ ВАЖНО (Особенно для Xiaomi 14T Pro / MediaTek):**
-> Устройства на MediaTek очень чувствительны к изменению образов ядра. Несовпадение версии KMI или потеря ключей AVB при перепаковке может привести к ошибке **"Couldn't initialize user 0"** (отвал монтирования зашифрованного раздела `/data`).
-> **ОБЯЗАТЕЛЬНО СДЕЛАЙТЕ БЭКАП** ваших стоковых `boot.img` и `init_boot.img` (если есть) перед любыми манипуляциями, чтобы можно было загрузиться обратно через fastboot!
+> [!CAUTION]
+> **Обязательно сделайте бэкап** стоковых `boot.img` и `init_boot.img` перед прошивкой!
+> Устройства на MediaTek (Xiaomi 14T Pro) особенно чувствительны к изменению образов ядра.
+> Несовпадение KMI может привести к ошибке монтирования `/data`.
 
-*Внимание: Все действия вы выполняете на свой страх и риск.*
+**Все действия вы выполняете на свой страх и риск.**
 
-1. Распакуйте скачанный артефакт, чтобы получить готовый `.zip` архив AnyKernel3.
-2. Прошейте этот `.zip` архив через **TWRP**, **OrangeFox** или напрямую через приложение **KernelSU / SukiSU** (кнопка Flash ZIP).
-3. Перезагрузите устройство.
+### Через ADB Sideload (TWRP/OrangeFox):
+```bash
+adb sideload AnyKernel3-Xiaomi-13-Pro-GKI-5.15.zip
+```
+
+### Через Recovery:
+1. Скопируйте ZIP на устройство
+2. Загрузитесь в TWRP/OrangeFox
+3. Install → выберите ZIP → прошейте
+4. Перезагрузите устройство
+
+## 🔍 Верификация после прошивки
+
+Проверьте, что все фичи работают:
+```bash
+# Проверка версии ядра
+adb shell uname -a
+
+# Проверка MGLRU
+adb shell cat /sys/kernel/mm/lru_gen/enabled
+
+# Проверка BBR
+adb shell sysctl net.ipv4.tcp_congestion_control
+
+# Проверка ZRAM
+adb shell cat /proc/swaps
+
+# Проверка WireGuard
+adb shell cat /sys/module/wireguard/version
+```
 
 ## 📜 Благодарности
-* **AOSP / Google** за базовое дерево GKI.
-* **[Команде SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra)** за потрясающий форк KSU.
-* **SimonPunk** за разработку SUSFS.
+
+- **AOSP / Google** — базовое дерево GKI
+- **[SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra)** — форк KernelSU
+- **[SimonPunk](https://gitlab.com/simonpunk/susfs4ksu)** — SUSFS
+- **[osm0sis](https://github.com/osm0sis/AnyKernel3)** — AnyKernel3
 
 ---
+
 <div align="center">
-  <i>Создано с ❤️ автоматическим помощником MoonShadowKeeper</i>
+  <i>MoonShadow Kernel — собрано с ❤️ by MoonShadowKeeper</i>
 </div>
