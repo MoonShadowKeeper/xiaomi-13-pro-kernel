@@ -124,7 +124,7 @@ jobs:
         sed -i 's/block=.*/block=auto/' AnyKernel3/anykernel.sh
         
         # Копируем скомпилированный образ (Image)
-        cp out/mixed/dist/Image AnyKernel3/
+        cp out/android13-5.15/dist/Image AnyKernel3/
         
         # Собираем ZIP
         cd AnyKernel3
