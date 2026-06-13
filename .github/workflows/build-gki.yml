@@ -1,7 +1,16 @@
-name: Build Custom GKI Kernel for Xiaomi 13 Pro
+name: Build Custom GKI Kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      device:
+        description: 'Target Device'
+        required: true
+        default: 'Xiaomi-13-Pro'
+        type: choice
+        options:
+          - Xiaomi-13-Pro
+          - Xiaomi-14T-Pro
 
 jobs:
   build:
@@ -128,10 +137,10 @@ jobs:
         
         # Собираем ZIP
         cd AnyKernel3
-        zip -r9 ../AnyKernel3-Xiaomi-13-Pro-GKI-5.15.zip *
+        zip -r9 ../AnyKernel3-${{ github.event.inputs.device }}-GKI-5.15.zip *
 
     - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: AnyKernel3-Xiaomi-13-Pro-GKI-5.15
-        path: ~/kernel_workspace/AnyKernel3-Xiaomi-13-Pro-GKI-5.15.zip
+        name: AnyKernel3-${{ github.event.inputs.device }}-GKI-5.15
+        path: ~/kernel_workspace/AnyKernel3-${{ github.event.inputs.device }}-GKI-5.15.zip
