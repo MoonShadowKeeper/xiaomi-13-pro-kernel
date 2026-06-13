@@ -31,13 +31,11 @@ jobs:
           DEFAULT_MANIFEST="common-android14-6.1"
           echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
-          echo "OUT_VERSION_DIR=android14-6.1" >> $GITHUB_ENV
           echo "GKI_VERSION=6.1" >> $GITHUB_ENV
         else
           DEFAULT_MANIFEST="common-android13-5.15"
           echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
-          echo "OUT_VERSION_DIR=android13-5.15" >> $GITHUB_ENV
           echo "GKI_VERSION=5.15" >> $GITHUB_ENV
         fi
         
@@ -46,6 +44,14 @@ jobs:
         else
           echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
         fi
+
+    - name: Clean Workspace (self-hosted runner)
+      run: |
+        # На self-hosted runner ~/kernel_workspace может содержать артефакты
+        # от предыдущих запусков. Очищаем out/ и клоны утилит для чистой сборки.
+        rm -rf ~/kernel_workspace/out
+        rm -rf ~/kernel_workspace/susfs4ksu
+        rm -rf ~/kernel_workspace/AnyKernel3
 
     - name: Free Disk Space
       run: |
@@ -56,12 +62,15 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
+          zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
+          libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig \
+          python3 python-is-python3 bc lz4 libelf-dev libssl-dev
 
     - name: Setup repo tool
       run: |
         mkdir -p ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        curl -L https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
         echo "$HOME/bin" >> $GITHUB_PATH
 
@@ -70,94 +79,99 @@ jobs:
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
         repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
-        repo sync -c -j$(nproc) --no-clone-bundle --no-tags --no-clone-bundle
+        repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
 
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
         cd ~/kernel_workspace
-        if [ ! -d "susfs4ksu" ]; then
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
-        fi
+        # Всегда свежий клон (старый удалён в Clean Workspace)
+        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
+        
         cd common
         
-        # FIX #1: Сначала чистим дерево, ПОТОМ копируем файлы и патчим
+        # Сначала чистим дерево исходников, ПОТОМ копируем и патчим
         git reset --hard HEAD
         git clean -fdx
         
-        # Теперь копируем SUSFS-файлы в чистое дерево
+        # Копируем SUSFS-файлы в чистое дерево
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
         cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
         
-        # Применяем патч (игнорируем ошибки hunks)
+        # Применяем патч
         patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }} || true
         
-        # Ручной фикс для fs/namespace.c (Hunk #1)
-        sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
-        sed -i 's/#include "internal.h"/#include "internal.h"\n\n#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\nextern bool susfs_is_current_ksu_domain(void);\nextern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n\n#define CL_COPY_MNT_NS BIT(25)\n#endif/g' fs/namespace.c
+        # Ручной фикс для fs/namespace.c (Hunk #1) — только если ещё не применён
+        if ! grep -q 'CONFIG_KSU_SUSFS_SUS_MOUNT' fs/namespace.c; then
+          sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
+          sed -i 's/#include "internal.h"/#include "internal.h"\n\n#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\nextern bool susfs_is_current_ksu_domain(void);\nextern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n\n#define CL_COPY_MNT_NS BIT(25)\n#endif/g' fs/namespace.c
+        fi
         
-        # Ручной фикс для fs/proc/task_mmu.c (Hunk #1)
-        sed -i 's/#include <asm\/elf.h>/#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux\/susfs_def.h>\n#endif\n\n#include <asm\/elf.h>/g' fs/proc/task_mmu.c
+        # Ручной фикс для fs/proc/task_mmu.c (Hunk #1) — только если ещё не применён
+        if ! grep -q 'CONFIG_KSU_SUSFS_SUS_KSTAT' fs/proc/task_mmu.c; then
+          sed -i 's/#include <asm\/elf.h>/#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux\/susfs_def.h>\n#endif\n\n#include <asm\/elf.h>/g' fs/proc/task_mmu.c
+        fi
 
     - name: Apply Sukisu Ultra
       run: |
         cd ~/kernel_workspace/common
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
 
-    - name: Apply Networking and Wild GKI Features
+    - name: Apply Networking and GKI Features
       run: |
         cd ~/kernel_workspace/common
         
-        # FIX #2: Используем SKIP_DEFCONFIG_CHECK вместо опасного sed
-        export SKIP_DEFCONFIG_CHECK=1
+        # Обход проверки defconfig: sed + env (belt-and-suspenders)
+        # sed — надёжно работает на всех версиях AOSP build.sh
+        sed -i 's/check_defconfig//' build.config.gki || true
+        # env — на случай если будущие версии build.sh поддержат эту переменную
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
         
-        # Добавляем нужные нам модули в конфиг
-        cat <<EOF >> arch/arm64/configs/gki_defconfig
-        
-        # --- Network Features ---
-        CONFIG_TCP_CONG_BBR=y
-        CONFIG_DEFAULT_BBR=y
-        CONFIG_NET_SCH_FQ=y
-        CONFIG_WIREGUARD=y
-        
-        # --- File System Features ---
-        CONFIG_TMPFS_XATTR=y
-        CONFIG_TMPFS_POSIX_ACL=y
-        CONFIG_NTFS3_FS=y
-        CONFIG_NTFS3_FS_POSIX_ACL=y
-        CONFIG_EXFAT_FS=y
-        CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"
-        
-        # --- Memory Management (MGLRU & DAMON) ---
-        CONFIG_LRU_GEN=y
-        CONFIG_LRU_GEN_ENABLED=y
-        CONFIG_LRU_GEN_STATS=y
-        CONFIG_DAMON=y
-        CONFIG_DAMON_VADDR=y
-        CONFIG_DAMON_PADDR=y
-        CONFIG_DAMON_RECLAIM=y
-        
-        # --- ZRAM ---
-        CONFIG_ZSMALLOC=y
-        CONFIG_ZRAM=y
-        EOF
+        # Добавляем нужные модули в конфиг
+        cat <<'KCONFIG' >> arch/arm64/configs/gki_defconfig
+
+# --- Network Features ---
+CONFIG_TCP_CONG_BBR=y
+CONFIG_DEFAULT_BBR=y
+CONFIG_NET_SCH_FQ=y
+CONFIG_WIREGUARD=y
+
+# --- File System Features ---
+CONFIG_TMPFS_XATTR=y
+CONFIG_TMPFS_POSIX_ACL=y
+CONFIG_NTFS3_FS=y
+CONFIG_NTFS3_FS_POSIX_ACL=y
+CONFIG_EXFAT_FS=y
+CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"
+
+# --- Memory Management (MGLRU & DAMON) ---
+CONFIG_LRU_GEN=y
+CONFIG_LRU_GEN_ENABLED=y
+CONFIG_LRU_GEN_STATS=y
+CONFIG_DAMON=y
+CONFIG_DAMON_VADDR=y
+CONFIG_DAMON_PADDR=y
+CONFIG_DAMON_RECLAIM=y
+
+# --- ZRAM ---
+CONFIG_ZSMALLOC=y
+CONFIG_ZRAM=y
+KCONFIG
 
     - name: Build the Kernel
       run: |
         cd ~/kernel_workspace
-        # FIX #2 (продолжение): передаём SKIP_DEFCONFIG_CHECK в build.sh
         SKIP_DEFCONFIG_CHECK=1 LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
         
         echo "=== Kernel Features Verification ==="
-        grep CONFIG_LRU_GEN= out/*/.config || true
-        grep CONFIG_DAMON= out/*/.config || true
-        grep CONFIG_TCP_CONG_BBR= out/*/.config || true
-        grep CONFIG_NET_SCH_FQ= out/*/.config || true
-        grep CONFIG_WIREGUARD= out/*/.config || true
-        grep CONFIG_NTFS3_FS= out/*/.config || true
-        grep CONFIG_EXFAT_FS= out/*/.config || true
-        grep CONFIG_ZRAM= out/*/.config || true
-        grep CONFIG_ZSMALLOC= out/*/.config || true
+        grep CONFIG_LRU_GEN= out/*/.config || echo "WARN: LRU_GEN not found"
+        grep CONFIG_DAMON= out/*/.config || echo "WARN: DAMON not found"
+        grep CONFIG_TCP_CONG_BBR= out/*/.config || echo "WARN: BBR not found"
+        grep CONFIG_NET_SCH_FQ= out/*/.config || echo "WARN: FQ not found"
+        grep CONFIG_WIREGUARD= out/*/.config || echo "WARN: WIREGUARD not found"
+        grep CONFIG_NTFS3_FS= out/*/.config || echo "WARN: NTFS3 not found"
+        grep CONFIG_EXFAT_FS= out/*/.config || echo "WARN: EXFAT not found"
+        grep CONFIG_ZRAM= out/*/.config || echo "WARN: ZRAM not found"
+        grep CONFIG_ZSMALLOC= out/*/.config || echo "WARN: ZSMALLOC not found"
         
         echo "=== Vendor Compatibility Check ==="
         find out -name "*.symvers" | head
@@ -166,9 +180,8 @@ jobs:
     - name: Package with AnyKernel3
       run: |
         cd ~/kernel_workspace
-        if [ ! -d "AnyKernel3" ]; then
-          git clone https://github.com/osm0sis/AnyKernel3.git -b master AnyKernel3
-        fi
+        # Всегда свежий клон (старый удалён в Clean Workspace)
+        git clone https://github.com/osm0sis/AnyKernel3.git -b master AnyKernel3
         
         # Удаляем лишнее
         rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
@@ -177,10 +190,10 @@ jobs:
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS) /" AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
         sed -i 's/is_slot_device=0/is_slot_device=auto/' AnyKernel3/anykernel.sh
-        # Прямой путь к boot-разделу (Qualcomm by-name)
-        sed -i 's|block=.*|block=/dev/block/by-name/boot;|' AnyKernel3/anykernel.sh
+        # Прямой путь к boot-разделу (Qualcomm by-name, работает на всех современных Qualcomm/MediaTek)
+        sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot|block=/dev/block/by-name/boot|' AnyKernel3/anykernel.sh
         
-        # FIX #5: Универсальный поиск Image вместо hardcoded пути
+        # Копируем скомпилированный образ
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
         if [ -z "$KERNEL_IMAGE" ]; then
           echo "ERROR: Image not found in out/"
