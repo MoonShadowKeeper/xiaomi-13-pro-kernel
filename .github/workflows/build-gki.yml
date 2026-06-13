@@ -134,6 +134,16 @@ jobs:
         CONFIG_DAMON_PADDR=y
         CONFIG_DAMON_RECLAIM=y
         EOF
+        
+        # Включаем эксклюзивные фичи для ядра 6.1 (Xiaomi 14T Pro)
+        if [ "${{ github.event.inputs.device }}" == "Xiaomi-14T-Pro" ]; then
+          cat <<EOF >> arch/arm64/configs/gki_defconfig
+        # --- Kernel 6.1 Exclusive Features ---
+        CONFIG_DAMON_SYSFS=y
+        CONFIG_DAMON_LRU_SORT=y
+        CONFIG_NTFS3_LZX_XPRESS=y
+        EOF
+        fi
 
     - name: Build the Kernel
       run: |
