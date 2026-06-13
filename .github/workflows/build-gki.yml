@@ -15,6 +15,10 @@ on:
         description: 'Specific KMI Branch (e.g. common-android14-6.1-2024-04). Leave empty for latest.'
         required: false
         default: ''
+      target_commit:
+        description: 'Exact kernel commit hash (e.g. bf0a7f319). Leave empty for HEAD.'
+        required: false
+        default: 'bf0a7f319'
 
 jobs:
   build:
@@ -78,8 +82,22 @@ jobs:
       run: |
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
-        repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
+        
+        # Убираем --depth=1, чтобы иметь доступ к истории для checkout нужного коммита
+        repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }}
         repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
+        
+        if [ -n "${{ github.event.inputs.target_commit }}" ]; then
+          cd common
+          echo "[+] Fetching and checking out exact KMI commit: ${{ github.event.inputs.target_commit }}"
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow origin ${{ env.MANIFEST_BRANCH }} || git fetch origin
+          else
+            git fetch origin ${{ env.MANIFEST_BRANCH }} || git fetch origin
+          fi
+          git checkout ${{ github.event.inputs.target_commit }}
+          echo "[+] Successfully checked out commit ${{ github.event.inputs.target_commit }}"
+        fi
 
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
@@ -148,21 +166,8 @@ jobs:
         sed -i 's/-dirty//' scripts/setlocalversion || true
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
         
-        # Обход проверки KMI версий модулей (Bypass Hack)
-        if [ "${{ env.GKI_VERSION }}" == "6.1" ]; then
-          TARGET_FILE="kernel/module/version.c"
-        else
-          TARGET_FILE="kernel/module.c"
-        fi
-        
-        if [ -f "$TARGET_FILE" ]; then
-          echo "[+] Applying KMI version bypass hack to $TARGET_FILE"
-          sed -i '/bad_version:/{:a;n;/return 0;/{s/return 0;/return 1;/;b};ba}' "$TARGET_FILE"
-          # Проверяем успешность патча
-          grep -A 5 "bad_version:" "$TARGET_FILE" | grep -q "return 1;" && echo "[+] Bypass successfully patched!" || echo "[-] Bypass patch FAILED!"
-        else
-          echo "[-] Target file $TARGET_FILE not found for bypass patch!"
-        fi
+        # [ВАЖНО] KMI Bypass Hack ПОЛНОСТЬЮ УДАЛЕН. 
+        # Так как мы чекаутим точный коммит, vendor-модули загрузятся нативно без взлома.
         
         # Добавляем нужные модули в конфиг
         DEFCONFIG=arch/arm64/configs/gki_defconfig
@@ -239,6 +244,16 @@ jobs:
         
         # Динамически настраиваем anykernel.sh под текущую версию GKI ядра
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
+        
+        # СОЗДАЕМ INIT-СКРИПТ ДЛЯ ИСПРАВЛЕНИЯ ЧЕРНОГО ЭКРАНА (KProfiles DRM Fix)
+        # Magisk/KernelSU автоматически подхватит этот .rc файл при загрузке
+        mkdir -p AnyKernel3/ramdisk/overlay.d/init
+        cat << 'EOF' > AnyKernel3/ramdisk/overlay.d/init/kprofiles_fix.rc
+        on post-fs-data
+            # Ждем появления sysfs kprofiles и отключаем авто-смену профилей по экрану
+            wait /sys/module/kprofiles/parameters/auto_kp
+            write /sys/module/kprofiles/parameters/auto_kp 0
+        EOF
         
         # Копируем скомпилированный образ
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
