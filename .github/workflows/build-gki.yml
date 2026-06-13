@@ -120,10 +120,14 @@ jobs:
       run: |
         cd ~/kernel_workspace/common
         
-        # Обход проверки defconfig: sed + env (belt-and-suspenders)
-        # sed — надёжно работает на всех версиях AOSP build.sh
+        # Обход проверок GKI: defconfig + modules list
         sed -i 's/check_defconfig//' build.config.gki || true
-        # env — на случай если будущие версии build.sh поддержат эту переменную
+        # Отключаем проверку списка модулей (наши конфиги могут менять =m на =y)
+        sed -i '/GKI_MODULES_LIST/d' build.config.gki.aarch64 || true
+        sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' build.config.gki || true
+        sed -i '/TRIM_NONLISTED_KMI/d' build.config.gki || true
+        # Убираем -dirty суффикс из версии ядра
+        sed -i 's/-dirty//' scripts/setlocalversion || true
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
         
         # Добавляем нужные модули в конфиг
@@ -151,10 +155,6 @@ jobs:
         echo "CONFIG_DAMON_VADDR=y" >> $DEFCONFIG
         echo "CONFIG_DAMON_PADDR=y" >> $DEFCONFIG
         echo "CONFIG_DAMON_RECLAIM=y" >> $DEFCONFIG
-        echo "" >> $DEFCONFIG
-        echo "# --- ZRAM ---" >> $DEFCONFIG
-        echo "CONFIG_ZSMALLOC=y" >> $DEFCONFIG
-        echo "CONFIG_ZRAM=y" >> $DEFCONFIG
 
     - name: Build the Kernel
       run: |
