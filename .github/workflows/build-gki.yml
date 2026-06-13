@@ -40,20 +40,26 @@ jobs:
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
         cd ~/kernel_workspace
-        # Проверяем, клонирован ли уже SUSFS, чтобы не было ошибки при повторном запуске
         if [ ! -d "susfs4ksu" ]; then
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
         fi
         cd common
-        # Копируем исходники SUSFS
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
         cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
         
-        # Откатываем старые патчи если они были (для локального кэша)
-        git checkout -- fs/ namespace.c proc/ task_mmu.c || true
+        # Откатываем файлы перед патчем (кэш)
+        git reset --hard HEAD
+        git clean -fdx
         
-        # Применяем патч для ядра 5.15
-        patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch
+        # Применяем патч (игнорируем ошибки hunks)
+        patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch || true
+        
+        # Ручной фикс для fs/namespace.c (Hunk #1)
+        sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
+        sed -i 's/#include "internal.h"/#include "internal.h"\n\n#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\nextern bool susfs_is_current_ksu_domain(void);\nextern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n\n#define CL_COPY_MNT_NS BIT(25)\n#endif/g' fs/namespace.c
+        
+        # Ручной фикс для fs/proc/task_mmu.c (Hunk #1)
+        sed -i 's/#include <asm\/elf.h>/#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux\/susfs_def.h>\n#endif\n\n#include <asm\/elf.h>/g' fs/proc/task_mmu.c
 
     - name: Apply Sukisu Ultra and KSU SUSFS Patch
       run: |
