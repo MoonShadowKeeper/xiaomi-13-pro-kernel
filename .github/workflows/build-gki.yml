@@ -31,13 +31,13 @@ jobs:
           DEFAULT_MANIFEST="common-android14-6.1"
           echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
-          echo "KERNEL_DIR=android14-6.1" >> $GITHUB_ENV
+          echo "OUT_VERSION_DIR=android14-6.1" >> $GITHUB_ENV
           echo "GKI_VERSION=6.1" >> $GITHUB_ENV
         else
           DEFAULT_MANIFEST="common-android13-5.15"
           echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
-          echo "KERNEL_DIR=android13-5.15" >> $GITHUB_ENV
+          echo "OUT_VERSION_DIR=android13-5.15" >> $GITHUB_ENV
           echo "GKI_VERSION=5.15" >> $GITHUB_ENV
         fi
         
@@ -170,7 +170,7 @@ jobs:
         sed -i 's/is_slot_device=0/is_slot_device=auto/' AnyKernel3/anykernel.sh
         
         # Копируем скомпилированный образ (Image)
-        cp out/${{ env.KERNEL_DIR }}/dist/Image AnyKernel3/
+        cp out/${{ env.OUT_VERSION_DIR }}/dist/Image AnyKernel3/
         
         # ВАЖНО: Мы больше не запаковываем в zip вручную,
         # так как GitHub Actions (upload-artifact) сам создает ZIP из папки!
