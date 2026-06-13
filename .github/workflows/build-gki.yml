@@ -181,6 +181,9 @@ jobs:
         echo "" >> $DEFCONFIG
         echo "# --- KProfiles (Battery/Balanced/Performance switching) ---" >> $DEFCONFIG
         echo "CONFIG_KPROFILES=y" >> $DEFCONFIG
+        echo "" >> $DEFCONFIG
+        echo "# --- KernelSU KPM ---" >> $DEFCONFIG
+        echo "CONFIG_KPM=y" >> $DEFCONFIG
 
     - name: Build the Kernel
       run: |
@@ -203,6 +206,7 @@ jobs:
         grep CONFIG_ENERGY_MODEL= out/*/.config || echo "WARN: ENERGY_MODEL not found"
         grep CONFIG_SCHED_MC= out/*/.config || echo "WARN: SCHED_MC not found"
         grep CONFIG_KPROFILES= out/*/.config || echo "WARN: KPROFILES not found"
+        grep CONFIG_KPM= out/*/.config || echo "WARN: KPM not found"
         
         echo "=== Vendor Compatibility Check ==="
         find out -name "*.symvers" | head
