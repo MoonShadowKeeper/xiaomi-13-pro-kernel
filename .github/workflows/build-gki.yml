@@ -155,6 +155,11 @@ jobs:
         echo "CONFIG_DAMON_VADDR=y" >> $DEFCONFIG
         echo "CONFIG_DAMON_PADDR=y" >> $DEFCONFIG
         echo "CONFIG_DAMON_RECLAIM=y" >> $DEFCONFIG
+        echo "" >> $DEFCONFIG
+        echo "# --- Battery / Power Management ---" >> $DEFCONFIG
+        echo "CONFIG_CPU_IDLE_GOV_TEO=y" >> $DEFCONFIG
+        echo "CONFIG_ENERGY_MODEL=y" >> $DEFCONFIG
+        echo "CONFIG_SCHED_MC=y" >> $DEFCONFIG
 
     - name: Build the Kernel
       run: |
@@ -171,6 +176,11 @@ jobs:
         grep CONFIG_EXFAT_FS= out/*/.config || echo "WARN: EXFAT not found"
         grep CONFIG_ZRAM= out/*/.config || echo "WARN: ZRAM not found"
         grep CONFIG_ZSMALLOC= out/*/.config || echo "WARN: ZSMALLOC not found"
+        
+        echo "=== Battery / Power Verification ==="
+        grep CONFIG_CPU_IDLE_GOV_TEO= out/*/.config || echo "WARN: TEO not found"
+        grep CONFIG_ENERGY_MODEL= out/*/.config || echo "WARN: ENERGY_MODEL not found"
+        grep CONFIG_SCHED_MC= out/*/.config || echo "WARN: SCHED_MC not found"
         
         echo "=== Vendor Compatibility Check ==="
         find out -name "*.symvers" | head
