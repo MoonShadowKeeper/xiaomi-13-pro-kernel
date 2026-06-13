@@ -164,6 +164,10 @@ jobs:
         grep CONFIG_EXFAT_FS= out/*/.config || true
         grep CONFIG_ZRAM= out/*/.config || true
         grep CONFIG_ZSMALLOC= out/*/.config || true
+        
+        echo "=== Vendor Compatibility Check ==="
+        find out -name "*.symvers" | head
+        find out -name "vmlinux" | head
 
     - name: Package with AnyKernel3
       run: |
