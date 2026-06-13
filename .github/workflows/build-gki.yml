@@ -156,7 +156,8 @@ jobs:
         # Настраиваем anykernel.sh для GKI
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS) /" AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
-        sed -i 's/block=.*/block=auto/' AnyKernel3/anykernel.sh
+        sed -i 's/block=.*/block=boot/' AnyKernel3/anykernel.sh
+        sed -i 's/is_slot_device=0/is_slot_device=auto/' AnyKernel3/anykernel.sh
         
         # Копируем скомпилированный образ (Image)
         cp out/${{ env.KERNEL_DIR }}/dist/Image AnyKernel3/
