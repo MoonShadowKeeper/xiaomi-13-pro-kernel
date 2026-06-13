@@ -101,8 +101,8 @@ jobs:
         EOF
 
     - name: Build the Kernel
-      working-directory: kernel_workspace
       run: |
+        cd ~/kernel_workspace
         LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
         
         echo "=== Config Check ==="
