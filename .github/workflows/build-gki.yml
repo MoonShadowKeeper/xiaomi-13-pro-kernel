@@ -148,6 +148,22 @@ jobs:
         sed -i 's/-dirty//' scripts/setlocalversion || true
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
         
+        # Обход проверки KMI версий модулей (Bypass Hack)
+        if [ "${{ env.GKI_VERSION }}" == "6.1" ]; then
+          TARGET_FILE="kernel/module/version.c"
+        else
+          TARGET_FILE="kernel/module.c"
+        fi
+        
+        if [ -f "$TARGET_FILE" ]; then
+          echo "[+] Applying KMI version bypass hack to $TARGET_FILE"
+          sed -i '/bad_version:/{:a;n;/return 0;/{s/return 0;/return 1;/;b};ba}' "$TARGET_FILE"
+          # Проверяем успешность патча
+          grep -A 5 "bad_version:" "$TARGET_FILE" | grep -q "return 1;" && echo "[+] Bypass successfully patched!" || echo "[-] Bypass patch FAILED!"
+        else
+          echo "[-] Target file $TARGET_FILE not found for bypass patch!"
+        fi
+        
         # Добавляем нужные модули в конфиг
         DEFCONFIG=arch/arm64/configs/gki_defconfig
         echo "" >> $DEFCONFIG
