@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>📱 Xiaomi 13 Pro (Nuwa) Custom Kernel</h1>
-  <p><b>High-Performance GKI Kernel built with SukiSU-Ultra, SUSFS, and Advanced Networking</b></p>
+  <h1>📱 Кастомное ядро для Xiaomi 13 Pro (Nuwa)</h1>
+  <p><b>Высокопроизводительное GKI-ядро с SukiSU-Ultra, SUSFS и продвинутыми сетевыми функциями</b></p>
   
   <img src="https://img.shields.io/github/actions/workflow/status/MoonShadowKeeper/xiaomi-13-pro-kernel/build-gki.yml?branch=master&style=for-the-badge&logo=github-actions" alt="Build Status">
   <img src="https://img.shields.io/badge/Kernel-5.15%20GKI-blue?style=for-the-badge&logo=linux" alt="Kernel Version">
@@ -9,58 +9,54 @@
 
 ---
 
-## 🚀 Overview
+## 🚀 О проекте
 
-This repository contains an automated GitHub Actions pipeline to compile a feature-rich, high-performance Generic Kernel Image (GKI) specifically tailored for the **Xiaomi 13 Pro (Nuwa)** on Android 13/14+ (Linux 5.15 branch).
+В этом репозитории настроен автоматический пайплайн (GitHub Actions) для компиляции функционального и высокопроизводительного ядра Generic Kernel Image (GKI) специально для **Xiaomi 13 Pro (Nuwa)** на базе Android 13/14+ (ветка Linux 5.15).
 
-This kernel aims to provide top-tier root hiding capabilities alongside network optimization patches inspired by Wild GKI.
+Это ядро создано для обеспечения максимальной скрытности root-прав, а также содержит патчи сетевой оптимизации, вдохновленные проектом Wild GKI.
 
-## ✨ Features
+## ✨ Основные фичи
 
-### 🛡️ Root & Stealth (Security)
-* **[SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra):** Advanced KernelSU fork with deep integration for bypassing aggressive root detections.
-* **SUSFS v2.1.0+ (Spoofing User Space File System):** Fully hides the root environment, modules, and mount spaces from banking apps and anti-cheat software.
-* **Baseband Guard (BBG):** Enhanced kernel-level security parameter restricting unauthorized baseband access.
+### 🛡️ Root и скрытность (Безопасность)
+* **[SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra):** Продвинутый форк KernelSU с глубокой интеграцией для обхода агрессивных проверок на root.
+* **SUSFS v2.1.0+ (Spoofing User Space File System):** Полностью скрывает root-окружение, модули и точки монтирования от банковских приложений и античитов.
+* **Baseband Guard (BBG):** Улучшенный параметр безопасности на уровне ядра, ограничивающий несанкционированный доступ к модему.
 
-### 🌐 Advanced Networking (Wild GKI Port)
-* **BBRv1 TCP Congestion Control:** Improves network throughput and reduces latency.
-* **Wireguard:** Built-in VPN protocol support operating directly in kernel space for maximum speed.
-* **IP Set & IPv6 NAT:** Advanced firewall manipulation and routing capabilities.
-* **TTL / HL Target Support:** Packet manipulation to bypass tethering restrictions.
+### 🌐 Продвинутая сеть (Порт из Wild GKI)
+* **Контроль перегрузки BBRv1 TCP:** Увеличивает пропускную способность сети и снижает пинг.
+* **Wireguard:** Встроенная поддержка VPN-протокола, работающая напрямую на уровне ядра для максимальной скорости.
+* **IP Set & IPv6 NAT:** Продвинутые возможности маршрутизации и манипуляции фаерволом.
+* **Поддержка TTL / HL:** Манипуляция пакетами для обхода ограничений операторов на раздачу интернета (Tethering).
 
-### 📁 File System Enhancements
-* **TMPFS XATTR:** Extended attributes support for tmpfs (Crucial for Mountify).
-* **TMPFS POSIX ACL:** Advanced Access Control List support.
+### 📁 Улучшения файловой системы
+* **TMPFS XATTR:** Поддержка расширенных атрибутов для tmpfs (Критически важно для работы модуля Mountify).
+* **TMPFS POSIX ACL:** Продвинутая поддержка списков контроля доступа (ACL).
 
-## 🛠️ How to Build (Automated)
+## 🛠️ Как собирать (Автоматически)
 
-You do not need a powerful PC to build this kernel. It leverages GitHub Actions:
+Вам не нужен мощный ПК для компиляции этого ядра. Вся работа выполняется через GitHub Actions (или на подключенном сервере):
 
-1. Go to the [Actions tab](../../actions) of this repository.
-2. Select **Build Custom GKI Kernel for Xiaomi 13 Pro**.
-3. Click **Run workflow**.
-4. Wait approximately 45-60 minutes.
-5. Once completed, download the `Image-Xiaomi-13-Pro-GKI-5.15` artifact from the run summary.
+1. Перейдите на вкладку [Actions](../../actions) в этом репозитории.
+2. Выберите **Build Custom GKI Kernel for Xiaomi 13 Pro**.
+3. Нажмите **Run workflow**.
+4. Дождитесь завершения (около 15-20 минут на мощном сервере).
+5. После завершения скачайте артефакт `AnyKernel3-Xiaomi-13-Pro-GKI-5.15` со страницы результатов.
 
-## 📦 Installation
+## 📦 Установка
 
-*Note: Proceed with caution. Always back up your stock `boot.img` before flashing custom kernels.*
+*Внимание: Все действия вы выполняете на свой страх и риск. Всегда делайте бэкап стандартного `boot.img` перед прошивкой кастомных ядер.*
 
-1. Extract the downloaded artifact to get the `Image` file.
-2. Use tools like **AnyKernel3** to pack this `Image` into a flashable `.zip`.
-3. Flash the `.zip` via TWRP, OrangeFox, or directly through the KernelSU / SukiSU app.
-4. Alternatively, use tools like `magiskboot` to patch your stock `boot.img` with the new kernel `Image` and flash via fastboot:
-   ```bash
-   fastboot flash boot new-boot.img
-   ```
+1. Распакуйте скачанный артефакт, чтобы получить готовый `.zip` архив AnyKernel3.
+2. Прошейте этот `.zip` архив через **TWRP**, **OrangeFox** или напрямую через приложение **KernelSU / SukiSU** (кнопка Flash ZIP).
+3. Перезагрузите устройство.
 
-## 📜 Credits & Acknowledgments
-* **AOSP / Google** for the GKI base tree.
-* **[SukiSU-Ultra Team](https://github.com/sukisu-ultra/sukisu-ultra)** for the incredible KSU fork.
-* **SimonPunk** for SUSFS.
-* **Wild GKI** for the networking features inspiration.
+## 📜 Благодарности
+* **AOSP / Google** за базовое дерево GKI.
+* **[Команде SukiSU-Ultra](https://github.com/sukisu-ultra/sukisu-ultra)** за потрясающий форк KSU.
+* **SimonPunk** за разработку SUSFS.
+* **Wild GKI** за вдохновение сетевыми фишками.
 
 ---
 <div align="center">
-  <i>Built with ❤️ by MoonShadowKeeper's automated CI</i>
+  <i>Создано с ❤️ автоматическим помощником MoonShadowKeeper</i>
 </div>
