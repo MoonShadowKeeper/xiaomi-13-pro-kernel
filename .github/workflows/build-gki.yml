@@ -52,7 +52,7 @@ jobs:
         cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
         
         # Применяем патч для ядра 5.15
-        patch -p1 < ../susfs4ksu/50_add_susfs_in_gki-android13-5.15.patch
+        patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch
 
     - name: Apply Networking and Wild GKI Features
       run: |
