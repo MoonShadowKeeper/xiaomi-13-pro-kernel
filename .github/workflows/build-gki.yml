@@ -104,6 +104,29 @@ jobs:
         # --- File System Features ---
         CONFIG_TMPFS_XATTR=y
         CONFIG_TMPFS_POSIX_ACL=y
+        CONFIG_NTFS3_FS=y
+        CONFIG_NTFS3_LZX_XPRESS=y
+        CONFIG_NTFS3_FS_POSIX_ACL=y
+        CONFIG_EXFAT_FS=y
+        CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"
+        
+        # --- Memory Management (MGLRU & DAMON) ---
+        CONFIG_LRU_GEN=y
+        CONFIG_LRU_GEN_ENABLED=y
+        CONFIG_DAMON=y
+        CONFIG_DAMON_VADDR=y
+        CONFIG_DAMON_PADDR=y
+        CONFIG_DAMON_SYSFS=y
+        CONFIG_DAMON_RECLAIM=y
+        CONFIG_DAMON_LRU_SORT=y
+        
+        # --- Disable Debugs (Performance Boost) ---
+        CONFIG_PROVE_LOCKING=n
+        CONFIG_DEBUG_KMEMLEAK=n
+        CONFIG_DEBUG_SPINLOCK=n
+        CONFIG_DEBUG_MUTEXES=n
+        CONFIG_SCHED_DEBUG=n
+        CONFIG_DEBUG_PREEMPT=n
         EOF
 
     - name: Build the Kernel
