@@ -1,0 +1,121 @@
+name: Build Custom GKI Kernel for Xiaomi 13 Pro
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Free Disk Space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+        df -h
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig
+
+    - name: Setup repo tool
+      run: |
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Initialize and Sync Kernel Source
+      run: |
+        mkdir kernel_workspace && cd kernel_workspace
+        # Инициализация AOSP GKI (Android 13, ядро 5.15)
+        repo init -u https://android.googlesource.com/kernel/manifest -b common-android13-5.15 --depth=1
+        repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle
+
+    - name: Apply Sukisu Ultra
+      run: |
+        cd kernel_workspace/common
+        curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
+
+    - name: Apply SUSFS v2.1.0+ Patches
+      run: |
+        cd kernel_workspace
+        git clone https://gitlab.com/simonpunk/susfs4ksu.git
+        cd common
+        # Копируем исходники SUSFS
+        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
+        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
+        
+        # Применяем патч для ядра 5.15
+        patch -p1 < ../susfs4ksu/kernel_patches/5.15/susfs.patch
+        
+        # Обновляем Makefile для SUSFS
+        # В некоторых версиях SUSFS требуется интеграция в Makefile/Kconfig
+        patch -p1 < ../susfs4ksu/kernel_patches/5.15/susfs_ksu.patch || true
+
+    - name: Apply Networking and Wild GKI Features
+      run: |
+        cd kernel_workspace/common
+        
+        # Настраиваем gki_defconfig
+        CONFIG_FILE="arch/arm64/configs/gki_defconfig"
+        
+        cat <<EOF >> $CONFIG_FILE
+
+        # --- Wild GKI Networking & Features ---
+        CONFIG_TCP_CONG_BBR=y
+        CONFIG_DEFAULT_BBR=y
+        CONFIG_WIREGUARD=y
+        CONFIG_IP_SET=y
+        CONFIG_IP_SET_MAX=256
+        CONFIG_IP_SET_BITMAP_IP=y
+        CONFIG_IP_SET_BITMAP_IPMAC=y
+        CONFIG_IP_SET_BITMAP_PORT=y
+        CONFIG_IP_SET_HASH_IP=y
+        CONFIG_IP_SET_HASH_IPMARK=y
+        CONFIG_IP_SET_HASH_IPPORT=y
+        CONFIG_IP_SET_HASH_IPPORTIP=y
+        CONFIG_IP_SET_HASH_IPPORTNET=y
+        CONFIG_IP_SET_HASH_MAC=y
+        CONFIG_IP_SET_HASH_NETPORTNET=y
+        CONFIG_IP_SET_HASH_NET=y
+        CONFIG_IP_SET_HASH_NETNET=y
+        CONFIG_IP_SET_HASH_NETPORT=y
+        CONFIG_IP_SET_HASH_NETIFACE=y
+        CONFIG_IP_SET_LIST_SET=y
+        CONFIG_IP6_NF_NAT=y
+        CONFIG_NETFILTER_XT_TARGET_HL=y
+        CONFIG_NETFILTER_XT_MATCH_HL=y
+        
+        # --- File System Features ---
+        CONFIG_TMPFS_XATTR=y
+        CONFIG_TMPFS_POSIX_ACL=y
+        
+        # --- Security / Baseband Guard (BBG) ---
+        CONFIG_BASEBAND_GUARD=y
+        EOF
+        
+        echo "Конфигурация успешно добавлена в gki_defconfig."
+
+    - name: Build Kernel (Bazel)
+      run: |
+        cd kernel_workspace
+        # GKI для ARM64 обычно собирается через bazel
+        tools/bazel build //common:kernel_aarch64
+
+    - name: Prepare Artifacts
+      run: |
+        mkdir -p output
+        cp kernel_workspace/bazel-bin/common/kernel_aarch64/Image output/
+        # Если есть AnyKernel3, здесь можно было бы упаковать в zip
+
+    - name: Upload Image Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: Image-Xiaomi-13-Pro-GKI-5.15
+        path: output/Image
