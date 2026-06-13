@@ -86,23 +86,20 @@ jobs:
         # Инициализация и синхронизация с полной историей для возможности checkout любого коммита
         repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }}
         
-        # Используем --no-clone-bundle но убираем --no-tags для полной истории
-        # depth=0 гарантирует полную историю всех коммитов
-        repo sync -c -j$(nproc) --no-clone-bundle --force-sync --no-tags
+        # Синхронизация без ограничений глубины для доступа к любым коммитам
+        repo sync -c -j$(nproc) --no-clone-bundle --force-sync
         
         # Переход на точный коммит
         if [ -n "${{ github.event.inputs.target_commit }}" ]; then
           cd common
           echo "[+] Fetching and checking out exact KMI commit: ${{ github.event.inputs.target_commit }}"
           
-          # Фетчим все теги и полную историю с основного remote
-          git fetch --all --tags
+          # Фетчим полную историю из основного remote
+          git fetch origin android13-5.15 --depth=1000 || git fetch origin --unshallow 2>/dev/null || git fetch origin
           
-          # Пытаемся найти коммит в разных источниках
+          # Пытаемся получить конкретный коммит напрямую
           if ! git cat-file -e ${{ github.event.inputs.target_commit }} 2>/dev/null; then
-            # Коммит не найден локально, пробуем получить из upstream
-            git fetch https://android.googlesource.com/kernel/common +refs/heads/*:refs/remotes/upstream/*
-            git fetch https://android.googlesource.com/kernel/common +refs/tags/*:refs/tags/*
+            git fetch https://android.googlesource.com/kernel/common +${{ github.event.inputs.target_commit }}:refs/heads/temp_checkout 2>/dev/null || true
           fi
           
           # Переключаемся на нужный коммит
