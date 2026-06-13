@@ -37,11 +37,6 @@ jobs:
         repo init -u https://android.googlesource.com/kernel/manifest -b common-android13-5.15 --depth=1
         repo sync -c -j$(nproc) --no-clone-bundle --no-tags --no-clone-bundle
 
-    - name: Apply Sukisu Ultra
-      run: |
-        cd ~/kernel_workspace/common
-        curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
-
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
         cd ~/kernel_workspace
@@ -51,11 +46,21 @@ jobs:
         fi
         cd common
         # Копируем исходники SUSFS
-        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
-        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
+        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
+        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
+        
+        # Откатываем старые патчи если они были (для локального кэша)
+        git checkout -- fs/ namespace.c proc/ task_mmu.c || true
         
         # Применяем патч для ядра 5.15
         patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch
+
+    - name: Apply Sukisu Ultra and KSU SUSFS Patch
+      run: |
+        cd ~/kernel_workspace/common
+        curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
+        cd KernelSU
+        patch -p1 < ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
 
     - name: Apply Networking and Wild GKI Features
       run: |
