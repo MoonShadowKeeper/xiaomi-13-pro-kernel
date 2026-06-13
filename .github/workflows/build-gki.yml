@@ -83,21 +83,27 @@ jobs:
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
         
-        # Инициализация и синхронизация
+        # Инициализация и синхронизация с полной историей для возможности checkout любого коммита
         repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }}
-        repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
+        
+        # Используем --no-clone-bundle но убираем --no-tags для полной истории
+        # depth=0 гарантирует полную историю всех коммитов
+        repo sync -c -j$(nproc) --no-clone-bundle --force-sync --no-tags
         
         # Переход на точный коммит
         if [ -n "${{ github.event.inputs.target_commit }}" ]; then
           cd common
           echo "[+] Fetching and checking out exact KMI commit: ${{ github.event.inputs.target_commit }}"
           
-          # В repo-клиенте remote может называться не origin, поэтому фетчим напрямую по URL.
-          # Имя ветки в kernel/common обычно совпадает с MANIFEST_BRANCH без префикса 'common-'
-          PROJECT_BRANCH=$(echo "${{ env.MANIFEST_BRANCH }}" | sed 's/^common-//')
+          # Фетчим все теги и полную историю с основного remote
+          git fetch --all --tags
           
-          # Получаем историю напрямую из официального репозитория Google
-          git fetch https://android.googlesource.com/kernel/common $PROJECT_BRANCH
+          # Пытаемся найти коммит в разных источниках
+          if ! git cat-file -e ${{ github.event.inputs.target_commit }} 2>/dev/null; then
+            # Коммит не найден локально, пробуем получить из upstream
+            git fetch https://android.googlesource.com/kernel/common +refs/heads/*:refs/remotes/upstream/*
+            git fetch https://android.googlesource.com/kernel/common +refs/tags/*:refs/tags/*
+          fi
           
           # Переключаемся на нужный коммит
           git checkout ${{ github.event.inputs.target_commit }}
