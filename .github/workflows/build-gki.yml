@@ -150,8 +150,14 @@ jobs:
         cd ~/kernel_workspace
         LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
         
-        echo "=== Config Check ==="
-        grep -E "LRU_GEN|DAMON|BBR|WIREGUARD|NTFS3|EXFAT|NET_SCH_FQ" out/*/.config || true
+        echo "=== Kernel Features Verification ==="
+        grep CONFIG_LRU_GEN= out/*/.config || true
+        grep CONFIG_DAMON= out/*/.config || true
+        grep CONFIG_TCP_CONG_BBR= out/*/.config || true
+        grep CONFIG_NET_SCH_FQ= out/*/.config || true
+        grep CONFIG_WIREGUARD= out/*/.config || true
+        grep CONFIG_NTFS3_FS= out/*/.config || true
+        grep CONFIG_EXFAT_FS= out/*/.config || true
 
     - name: Package with AnyKernel3
       run: |
