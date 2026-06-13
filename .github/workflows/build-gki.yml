@@ -32,20 +32,23 @@ jobs:
 
     - name: Initialize and Sync Kernel Source
       run: |
-        mkdir kernel_workspace && cd kernel_workspace
-        # Инициализация AOSP GKI (Android 13, ядро 5.15)
+        mkdir -p ~/kernel_workspace
+        cd ~/kernel_workspace
         repo init -u https://android.googlesource.com/kernel/manifest -b common-android13-5.15 --depth=1
-        repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle
+        repo sync -c -j$(nproc) --no-clone-bundle --no-tags --no-clone-bundle
 
     - name: Apply Sukisu Ultra
       run: |
-        cd kernel_workspace/common
+        cd ~/kernel_workspace/common
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
 
     - name: Apply SUSFS v2.1.0+ Patches
       run: |
-        cd kernel_workspace
-        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
+        cd ~/kernel_workspace
+        # Проверяем, клонирован ли уже SUSFS, чтобы не было ошибки при повторном запуске
+        if [ ! -d "susfs4ksu" ]; then
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
+        fi
         cd common
         # Копируем исходники SUSFS
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
@@ -56,7 +59,7 @@ jobs:
 
     - name: Apply Networking and Wild GKI Features
       run: |
-        cd kernel_workspace/common
+        cd ~/kernel_workspace/common
         
         # Настраиваем gki_defconfig
         CONFIG_FILE="arch/arm64/configs/gki_defconfig"
@@ -98,39 +101,36 @@ jobs:
         
         echo "Конфигурация успешно добавлена в gki_defconfig."
 
-    - name: Build Kernel (Bazel)
+    - name: Build the Kernel
       run: |
-        cd kernel_workspace
-        # GKI для ARM64 обычно собирается через bazel
-        tools/bazel build //common:kernel_aarch64
+        cd ~/kernel_workspace
+        # Так как исходники лежат в ~/kernel_workspace, кэш Bazel сохраняется автоматически!
+        LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
 
-    - name: Pack into AnyKernel3
+    - name: Package with AnyKernel3
       run: |
-        mkdir -p output
-        cp kernel_workspace/bazel-bin/common/kernel_aarch64/Image output/
-        
-        # Клонируем AnyKernel3
-        cd kernel_workspace
-        git clone https://github.com/osm0sis/AnyKernel3.git
-        cd AnyKernel3
+        cd ~/kernel_workspace
+        if [ ! -d "AnyKernel3" ]; then
+          git clone https://github.com/osm0sis/AnyKernel3.git -b master AnyKernel3
+        fi
         
         # Удаляем лишнее
-        rm -rf .git README.md *placeholder
-        
-        # Копируем собранное ядро
-        cp ../bazel-bin/common/kernel_aarch64/Image .
+        rm -rf AnyKernel3/.git AnyKernel3/README.md AnyKernel3/*placeholder
         
         # Настраиваем anykernel.sh для GKI
-        sed -i 's/kernel.string=.*/kernel.string=Custom GKI 5.15 (SukiSU-Ultra + SUSFS) /' anykernel.sh
-        sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
-        sed -i 's/block=.*/block=auto/' anykernel.sh
-        sed -i 's/is_slot_device=0;/is_slot_device=1;/' anykernel.sh
+        sed -i 's/kernel.string=.*/kernel.string=Custom GKI 5.15 (SukiSU-Ultra + SUSFS) /' AnyKernel3/anykernel.sh
+        sed -i 's/do.devicecheck=1/do.devicecheck=0/' AnyKernel3/anykernel.sh
+        sed -i 's/block=.*/block=auto/' AnyKernel3/anykernel.sh
         
-        # Упаковываем в ZIP
-        zip -r9 ../../output/AnyKernel3-Xiaomi-13-Pro-GKI.zip *
+        # Копируем скомпилированный образ (Image)
+        cp out/mixed/dist/Image AnyKernel3/
+        
+        # Собираем ZIP
+        cd AnyKernel3
+        zip -r9 ../AnyKernel3-Xiaomi-13-Pro-GKI-5.15.zip *
 
     - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
         name: AnyKernel3-Xiaomi-13-Pro-GKI-5.15
-        path: output/AnyKernel3-Xiaomi-13-Pro-GKI.zip
+        path: ~/kernel_workspace/AnyKernel3-Xiaomi-13-Pro-GKI-5.15.zip
