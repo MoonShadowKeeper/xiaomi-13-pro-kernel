@@ -133,6 +133,10 @@ jobs:
         CONFIG_DAMON_VADDR=y
         CONFIG_DAMON_PADDR=y
         CONFIG_DAMON_RECLAIM=y
+        
+        # --- ZRAM ---
+        CONFIG_ZSMALLOC=y
+        CONFIG_ZRAM=y
         EOF
         
         # Включаем эксклюзивные фичи для ядра 6.1 (Xiaomi 14T Pro)
@@ -158,6 +162,8 @@ jobs:
         grep CONFIG_WIREGUARD= out/*/.config || true
         grep CONFIG_NTFS3_FS= out/*/.config || true
         grep CONFIG_EXFAT_FS= out/*/.config || true
+        grep CONFIG_ZRAM= out/*/.config || true
+        grep CONFIG_ZSMALLOC= out/*/.config || true
 
     - name: Package with AnyKernel3
       run: |
