@@ -16,7 +16,7 @@ on:
         required: false
         default: ''
       target_commit:
-        description: 'Exact kernel commit hash. Leave empty for HEAD.'
+        description: 'Exact kernel commit hash. Leave empty to use stock-matched default for selected device.'
         required: false
         default: ''
 
@@ -36,17 +36,25 @@ jobs:
           echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
           echo "GKI_VERSION=6.1" >> $GITHUB_ENV
+          DEFAULT_TARGET_COMMIT=""
         else
-          DEFAULT_MANIFEST="common-android13-5.15"
+          DEFAULT_MANIFEST="common-android13-5.15-2024-11"
           echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
           echo "GKI_VERSION=5.15" >> $GITHUB_ENV
+          DEFAULT_TARGET_COMMIT="bf0a81a7f319"
         fi
         
         if [ -n "${{ github.event.inputs.kmi_version }}" ]; then
           echo "MANIFEST_BRANCH=${{ github.event.inputs.kmi_version }}" >> $GITHUB_ENV
         else
           echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
+        fi
+
+        if [ -n "${{ env.TARGET_COMMIT }}" ]; then
+          echo "TARGET_COMMIT=${{ env.TARGET_COMMIT }}" >> $GITHUB_ENV
+        else
+          echo "TARGET_COMMIT=$DEFAULT_TARGET_COMMIT" >> $GITHUB_ENV
         fi
 
     - name: Clean Workspace & Locks
@@ -87,9 +95,9 @@ jobs:
         repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
         repo sync -c -j$(nproc) --no-clone-bundle --force-sync
         
-        if [ -n "${{ github.event.inputs.target_commit }}" ]; then
+        if [ -n "${{ env.TARGET_COMMIT }}" ]; then
           cd common
-          echo "[+] Fetching and checking out exact KMI commit: ${{ github.event.inputs.target_commit }}"
+          echo "[+] Fetching and checking out exact KMI commit: ${{ env.TARGET_COMMIT }}"
           
           REMOTE_NAME="aosp"
           if ! git remote get-url origin >/dev/null 2>&1; then
@@ -102,12 +110,12 @@ jobs:
           
           git fetch $REMOTE_NAME --unshallow 2>/dev/null || git fetch $REMOTE_NAME --depth=1000 || true
           
-          if ! git cat-file -e ${{ github.event.inputs.target_commit }} 2>/dev/null; then
-            git fetch https://android.googlesource.com/kernel/common ${{ github.event.inputs.target_commit }} || true
+          if ! git cat-file -e ${{ env.TARGET_COMMIT }} 2>/dev/null; then
+            git fetch https://android.googlesource.com/kernel/common ${{ env.TARGET_COMMIT }} || true
           fi
           
-          git checkout ${{ github.event.inputs.target_commit }}
-          echo "[+] Successfully checked out commit ${{ github.event.inputs.target_commit }}"
+          git checkout ${{ env.TARGET_COMMIT }}
+          echo "[+] Successfully checked out commit ${{ env.TARGET_COMMIT }}"
         fi
 
     - name: Apply SUSFS v2.1.0+ Patches
@@ -217,9 +225,13 @@ jobs:
         
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
         cp "$KERNEL_IMAGE" AnyKernel3/
+        
+        cd AnyKernel3
+        zip -r9 "../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip" *
+        cd ..
 
     - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
         name: AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
-        path: ~/kernel_workspace/AnyKernel3/
+        path: ~/kernel_workspace/AnyKernel3-*.zip
