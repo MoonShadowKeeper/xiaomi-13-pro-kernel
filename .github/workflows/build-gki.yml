@@ -71,6 +71,14 @@ jobs:
         # Remove stale git locks from previously cancelled runs
         find ~/kernel_workspace -name "*.lock" -delete 2>/dev/null || true
 
+        # Hard-reset common/ to remove any stale checkout state that causes
+        # "repo sync" to fail with SyncError on re-runs
+        if [ -d ~/kernel_workspace/common/.git ]; then
+          git -C ~/kernel_workspace/common reset --hard HEAD 2>/dev/null || true
+          git -C ~/kernel_workspace/common clean -fdx 2>/dev/null || true
+          git -C ~/kernel_workspace/common checkout HEAD -- . 2>/dev/null || true
+        fi
+
         # Fix #8: keep common/ for incremental sync — only clean build outputs
         rm -rf ~/kernel_workspace/out
         rm -rf ~/kernel_workspace/susfs4ksu
@@ -109,9 +117,9 @@ jobs:
         # so that we can later fetch arbitrary historical commits.
         if [ -n "$TARGET_COMMIT" ]; then
           # Sync with force to avoid stale checkout conflicts on re-runs
-          repo sync -c -j$(nproc) --no-clone-bundle --force-sync
+          repo sync -c -j$(nproc) --no-clone-bundle --force-sync --force-checkout
         else
-          repo sync -c -j$(nproc) --no-clone-bundle
+          repo sync -c -j$(nproc) --no-clone-bundle --force-checkout
         fi
 
         if [ -n "$TARGET_COMMIT" ]; then
