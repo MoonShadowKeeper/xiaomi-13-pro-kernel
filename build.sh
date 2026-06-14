@@ -114,7 +114,7 @@ curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kern
 
 # --- 6. Integrate KProfiles ---
 echo "[+] Integrating KProfiles..."
-git clone https://github.com/beakthoven/Kprofiles.git drivers/misc/kprofiles
+git clone https://github.com/MoonShadowKeeper/Kprofiles-HyperOS.git drivers/misc/kprofiles
 rm -rf drivers/misc/kprofiles/.git
 
 if ! grep -q 'kprofiles' drivers/misc/Kconfig; then
