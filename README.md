@@ -1,7 +1,7 @@
 <div align="center">
   <h1>🌙 MoonShadow Kernel</h1>
   <p><b>Custom GKI Kernel for Xiaomi 13 Pro & Xiaomi 14T Pro</b></p>
-  <p><i>SukiSU-Ultra · SUSFS · ZRAM ZSTD · KProfiles-HyperOS · MGLRU</i></p>
+  <p><i>SukiSU-Ultra · SUSFS · ZRAM ZSTD · MGLRU</i></p>
   
   <img src="https://img.shields.io/github/actions/workflow/status/MoonShadowKeeper/xiaomi-13-pro-kernel/build-gki.yml?branch=master&style=for-the-badge&logo=github-actions&label=BUILD" alt="Build Status">
   <img src="https://img.shields.io/badge/GKI-5.15%20%7C%206.1-blue?style=for-the-badge&logo=linux" alt="Kernel Version">
@@ -34,7 +34,6 @@
 ### ⚡ Эксклюзивно для HyperOS
 | Фича | Описание |
 |------|----------|
-| **KProfiles-HyperOS** | Собственный форк. Напрямую слушает системный PowerHAL (`sconfig`). Игнорирует команды троттлинга от `joyose` в режиме "Производительность" (идеально для игр). |
 | **ZRAM ZSTD** | Ультра-сжатие оперативной памяти (вместо устаревшего LZ4). Позволяет HyperOS удерживать огромное количество тяжелых фоновых приложений без перезапуска. |
 
 ### 🛡️ Root & Скрытие
@@ -100,8 +99,6 @@ adb shell uname -a
 # Проверка активации алгоритма ZSTD для ZRAM
 adb shell cat /sys/block/zram0/comp_algorithm
 
-# Статус KProfiles (0=Disabled, 1=Battery, 2=Balanced, 3=Performance)
-adb shell cat /sys/kernel/kprofiles/kp_mode
 ```
 
 ---
