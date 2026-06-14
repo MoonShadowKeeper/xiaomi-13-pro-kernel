@@ -35,7 +35,6 @@
 |-----------|----------|
 | Kprofiles-HyperOS | Нативная интеграция с PowerHAL (sconfig) и блокировка системного троттлинга `joyose` в производительном режиме |
 | ZRAM ZSTD | Сжатие ZRAM переведено на ZSTD + zsmalloc для максимального удержания фоновых приложений в HyperOS |
-| TWRP Banner | Стильный ASCII-арт Луны при прошивке через TWRP/KernelFlasher |
 
 
 ### 🛡️ Root & Скрытие
@@ -72,10 +71,11 @@
 
 | Компонент | Kconfig | Описание |
 |-----------|---------|----------|
+| ZRAM ZSTD | `CONFIG_ZRAM_DEF_COMP_ZSTD=y` | Ультра-сжатие ZRAM для удержания огромного числа фоновых процессов без убивания их системой |
 | TEO cpuidle | `CONFIG_CPU_IDLE_GOV_TEO=y` | Умный выбор глубины сна для ядер CPU. Меньше ненужных пробуждений |
-| Energy Model | `CONFIG_ENERGY_MODEL=y` | EAS знает энергоцену каждой частоты → задачи на LITTLE-ядрах |
+| Energy Model | `CONFIG_ENERGY_MODEL=y` | EAS знает энергоцену каждой частоты |
 | MC Scheduling | `CONFIG_SCHED_MC=y` | Задачи пакуются на меньше ядер → остальные уходят в deep idle |
-| [KProfiles](https://github.com/beakthoven/Kprofiles) | `CONFIG_KPROFILES=y` | Переключение режимов Battery/Balanced/Performance через `/sys/kernel/kprofiles/kp_mode` |
+| KProfiles-HyperOS | `CONFIG_KPROFILES=y` | Умное переключение режимов Battery/Balanced/Performance с интеграцией в шторку HyperOS и антитроттлингом |
 
 ### ⚙️ Сборка
 
