@@ -271,10 +271,10 @@ jobs:
           # android13-5.15 — build/build.sh sources gettop.sh / build_utils.sh from
           # absolute paths (/build/...) that only exist inside Google's Docker container.
           # On a bare self-hosted runner we invoke make directly instead.
-          CLANG_PREBUILT=$(ls -d prebuilts/clang/host/linux-x86/clang-* 2>/dev/null | sort | tail -1)
+          CLANG_PREBUILT=$(ls -d prebuilts/clang/host/linux-x86/clang-* 2>/dev/null | sort | tail -1 || true)
           if [ -z "$CLANG_PREBUILT" ]; then
             echo "ERROR: No clang prebuilt found in prebuilts/clang/host/linux-x86/"
-            ls prebuilts/clang/host/linux-x86/ || true
+            ls prebuilts/clang/host/linux-x86/ 2>/dev/null || true
             exit 1
           fi
           CLANG_BIN="$(pwd)/$CLANG_PREBUILT/bin"
@@ -283,52 +283,56 @@ jobs:
           OUT_DIR="$(pwd)/out/android13-5.15/common"
           mkdir -p "$OUT_DIR"
 
-          # Export PATH so cross-compile tools (aarch64-linux-gnu-*) are found
-          # Add binutils from the prebuilt too if available
-          BINUTILS_PREBUILT=$(ls -d prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin 2>/dev/null | head -1)
-          if [ -n "$BINUTILS_PREBUILT" ]; then
-            export PATH="$CLANG_BIN:$(pwd)/$BINUTILS_PREBUILT:$PATH"
-          else
-            export PATH="$CLANG_BIN:$PATH"
-          fi
+          # Add prebuilt clang to PATH
+          export PATH="$CLANG_BIN:$PATH"
 
-          # Common make flags:
-          #   HOSTCC=gcc      — use system GCC for host tools (fixdep, etc.)
-          #   CC=clang        — use prebuilt clang for target compilation
-          #   LLVM_IAS=1      — use clang's integrated assembler
-          #   LD=ld.lld       — use LLVM linker
-          #   AR=llvm-ar      — use LLVM ar
-          #   NM=llvm-nm
-          #   OBJCOPY=llvm-objcopy
-          #   OBJDUMP=llvm-objdump
-          MAKE_FLAGS=(
-            HOSTCC=gcc
-            CC=clang
-            LLVM_IAS=1
-            LD=ld.lld
-            AR=llvm-ar
-            NM=llvm-nm
-            OBJCOPY=llvm-objcopy
-            OBJDUMP=llvm-objdump
-            STRIP=llvm-strip
-            ARCH=arm64
-            CROSS_COMPILE=aarch64-linux-gnu-
-            O="$OUT_DIR"
-          )
+          # Also add prebuilt GCC binutils if present (provides aarch64-linux-gnu-* tools)
+          BINUTILS_BIN=$(find prebuilts/gcc/linux-x86/aarch64 -name "aarch64-linux-gnu-gcc" 2>/dev/null | head -1 | xargs -I{} dirname {} 2>/dev/null || true)
+          if [ -n "$BINUTILS_BIN" ]; then
+            export PATH="$BINUTILS_BIN:$PATH"
+            echo "[+] Added binutils: $BINUTILS_BIN"
+          fi
 
           # Step 1: generate .config from gki_defconfig
           echo "[+] Running gki_defconfig..."
-          make -C common -j$(nproc) "${MAKE_FLAGS[@]}" gki_defconfig
+          make -C common -j$(nproc) \
+            HOSTCC=gcc \
+            CC=clang \
+            LLVM_IAS=1 \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            O="$OUT_DIR" \
+            gki_defconfig
 
           # Step 2: build the kernel Image
           echo "[+] Building kernel Image..."
-          make -C common -j$(nproc) "${MAKE_FLAGS[@]}" Image
+          make -C common -j$(nproc) \
+            HOSTCC=gcc \
+            CC=clang \
+            LLVM_IAS=1 \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            O="$OUT_DIR" \
+            Image
 
           # Create dist directory with Image for packaging step
           mkdir -p "$(pwd)/out/android13-5.15/dist"
           cp "$OUT_DIR/arch/arm64/boot/Image" "$(pwd)/out/android13-5.15/dist/Image"
           echo "[+] Kernel Image built and copied to dist/"
         fi
+
 
 
     - name: Package with AnyKernel3
