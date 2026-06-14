@@ -64,6 +64,7 @@ jobs:
         find ~/kernel_workspace -name "*.lock" -delete || true
 
         rm -rf ~/kernel_workspace/out
+        rm -rf ~/kernel_workspace/common
         rm -rf ~/kernel_workspace/susfs4ksu
         rm -rf ~/kernel_workspace/AnyKernel3
 
