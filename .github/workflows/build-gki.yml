@@ -24,7 +24,7 @@ jobs:
   build:
     name: Build Kernel
     runs-on: self-hosted
-    
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
           echo "GKI_VERSION=5.15" >> $GITHUB_ENV
           DEFAULT_TARGET_COMMIT="bf0a81a7f319"
         fi
-        
+
         if [ -n "${{ github.event.inputs.kmi_version }}" ]; then
           echo "MANIFEST_BRANCH=${{ github.event.inputs.kmi_version }}" >> $GITHUB_ENV
         else
@@ -62,7 +62,7 @@ jobs:
       run: |
         # Clear out any stale git locks from previously cancelled runs!
         find ~/kernel_workspace -name "*.lock" -delete || true
-        
+
         rm -rf ~/kernel_workspace/out
         rm -rf ~/kernel_workspace/susfs4ksu
         rm -rf ~/kernel_workspace/AnyKernel3
@@ -92,10 +92,10 @@ jobs:
       run: |
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
-        
+
         repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
         repo sync -c -j$(nproc) --no-clone-bundle --force-sync
-        
+
         if [ -n "${{ env.TARGET_COMMIT }}" ]; then
           echo "[+] Applying exact KMI source snapshot: ${{ env.TARGET_COMMIT }}"
           cd ~/kernel_workspace/common
@@ -118,21 +118,21 @@ jobs:
       run: |
         cd ~/kernel_workspace
         git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
-        
+
         cd common
         git reset --hard HEAD
         git clean -fdx
-        
+
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
         cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
-        
+
         patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }} || true
-        
+
         if ! grep -q 'CONFIG_KSU_SUSFS_SUS_MOUNT' fs/namespace.c; then
           sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
           sed -i 's/#include "internal.h"/#include "internal.h"\n\n#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\nextern bool susfs_is_current_ksu_domain(void);\nextern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n\n#define CL_COPY_MNT_NS BIT(25)\n#endif/g' fs/namespace.c
         fi
-        
+
         if ! grep -q 'CONFIG_KSU_SUSFS_SUS_KSTAT' fs/proc/task_mmu.c; then
           sed -i 's/#include <asm\/elf.h>/#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux\/susfs_def.h>\n#endif\n\n#include <asm\/elf.h>/g' fs/proc/task_mmu.c
         fi
@@ -141,20 +141,6 @@ jobs:
       run: |
         cd ~/kernel_workspace/common
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
-
-    - name: Integrate KProfiles HyperOS Edition
-      run: |
-        cd ~/kernel_workspace/common
-        git clone https://github.com/MoonShadowKeeper/Kprofiles-HyperOS.git drivers/misc/kprofiles
-        rm -rf drivers/misc/kprofiles/.git
-        
-        if ! grep -q 'kprofiles' drivers/misc/Kconfig; then
-          sed -i '/endmenu/i source "drivers/misc/kprofiles/Kconfig"' drivers/misc/Kconfig
-        fi
-        
-        if ! grep -q 'kprofiles' drivers/misc/Makefile; then
-          echo 'obj-$(CONFIG_KPROFILES) += kprofiles/' >> drivers/misc/Makefile
-        fi
 
     - name: Apply Networking, ZRAM and GKI Features
       run: |
@@ -165,7 +151,7 @@ jobs:
         sed -i '/TRIM_NONLISTED_KMI/d' build.config.gki || true
         sed -i 's/-dirty//' scripts/setlocalversion || true
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
-        
+
         DEFCONFIG=arch/arm64/configs/gki_defconfig
         echo "" >> $DEFCONFIG
         echo "CONFIG_TCP_CONG_BBR=y" >> $DEFCONFIG
@@ -188,9 +174,8 @@ jobs:
         echo "CONFIG_CPU_IDLE_GOV_TEO=y" >> $DEFCONFIG
         echo "CONFIG_ENERGY_MODEL=y" >> $DEFCONFIG
         echo "CONFIG_SCHED_MC=y" >> $DEFCONFIG
-        echo "CONFIG_KPROFILES=y" >> $DEFCONFIG
         echo "CONFIG_KPM=y" >> $DEFCONFIG
-        
+
         # --- ZRAM ZSTD TUNING ---
         # Keep ZRAM and ZSMALLOC as modules (=m). GKI module list expects mm/zsmalloc.ko and drivers/block/zram/zram.ko.
         echo "CONFIG_ZSMALLOC=m" >> $DEFCONFIG
@@ -209,19 +194,12 @@ jobs:
         cd ~/kernel_workspace
         git clone https://github.com/MoonShadowKeeper/AnyKernel3.git -b master AnyKernel3
         rm -rf AnyKernel3/.git
-        
+
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
-        
-        mkdir -p AnyKernel3/ramdisk/overlay.d/init
-        cat << 'EOF' > AnyKernel3/ramdisk/overlay.d/init/kprofiles_fix.rc
-        on post-fs-data
-            wait /sys/module/kprofiles/parameters/auto_kp
-            write /sys/module/kprofiles/parameters/auto_kp 0
-        EOF
-        
+
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
         cp "$KERNEL_IMAGE" AnyKernel3/
-        
+
         cd AnyKernel3
         zip -r9 "../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip" *
         cd ..
