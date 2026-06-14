@@ -18,7 +18,7 @@ on:
       target_commit:
         description: 'Exact kernel commit hash (e.g. bf0a7f319). Leave empty for HEAD.'
         required: false
-        default: 'bf0a7f319'
+        default: ''
 
 jobs:
   build:
