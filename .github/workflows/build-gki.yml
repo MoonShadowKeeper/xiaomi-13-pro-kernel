@@ -277,33 +277,59 @@ jobs:
             ls prebuilts/clang/host/linux-x86/ || true
             exit 1
           fi
-          echo "[+] Using clang: $CLANG_PREBUILT"
+          CLANG_BIN="$(pwd)/$CLANG_PREBUILT/bin"
+          echo "[+] Using clang: $CLANG_BIN"
 
           OUT_DIR="$(pwd)/out/android13-5.15/common"
           mkdir -p "$OUT_DIR"
 
-          export PATH="$(pwd)/$CLANG_PREBUILT/bin:$PATH"
+          # Export PATH so cross-compile tools (aarch64-linux-gnu-*) are found
+          # Add binutils from the prebuilt too if available
+          BINUTILS_PREBUILT=$(ls -d prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin 2>/dev/null | head -1)
+          if [ -n "$BINUTILS_PREBUILT" ]; then
+            export PATH="$CLANG_BIN:$(pwd)/$BINUTILS_PREBUILT:$PATH"
+          else
+            export PATH="$CLANG_BIN:$PATH"
+          fi
+
+          # Common make flags:
+          #   HOSTCC=gcc      — use system GCC for host tools (fixdep, etc.)
+          #   CC=clang        — use prebuilt clang for target compilation
+          #   LLVM_IAS=1      — use clang's integrated assembler
+          #   LD=ld.lld       — use LLVM linker
+          #   AR=llvm-ar      — use LLVM ar
+          #   NM=llvm-nm
+          #   OBJCOPY=llvm-objcopy
+          #   OBJDUMP=llvm-objdump
+          MAKE_FLAGS=(
+            HOSTCC=gcc
+            CC=clang
+            LLVM_IAS=1
+            LD=ld.lld
+            AR=llvm-ar
+            NM=llvm-nm
+            OBJCOPY=llvm-objcopy
+            OBJDUMP=llvm-objdump
+            STRIP=llvm-strip
+            ARCH=arm64
+            CROSS_COMPILE=aarch64-linux-gnu-
+            O="$OUT_DIR"
+          )
 
           # Step 1: generate .config from gki_defconfig
-          make -C common -j$(nproc) \
-            LLVM=1 LLVM_IAS=1 \
-            ARCH=arm64 \
-            O="$OUT_DIR" \
-            gki_defconfig
+          echo "[+] Running gki_defconfig..."
+          make -C common -j$(nproc) "${MAKE_FLAGS[@]}" gki_defconfig
 
-          # Step 2: build the kernel Image (LTO=thin via KCFLAGS)
-          make -C common -j$(nproc) \
-            LLVM=1 LLVM_IAS=1 \
-            ARCH=arm64 \
-            O="$OUT_DIR" \
-            KCFLAGS="-flto=thin" \
-            Image 2>&1 | tail -50
+          # Step 2: build the kernel Image
+          echo "[+] Building kernel Image..."
+          make -C common -j$(nproc) "${MAKE_FLAGS[@]}" Image
 
           # Create dist directory with Image for packaging step
           mkdir -p "$(pwd)/out/android13-5.15/dist"
           cp "$OUT_DIR/arch/arm64/boot/Image" "$(pwd)/out/android13-5.15/dist/Image"
           echo "[+] Kernel Image built and copied to dist/"
         fi
+
 
     - name: Package with AnyKernel3
       env:
