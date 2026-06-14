@@ -271,24 +271,20 @@ jobs:
           # android13-5.15 — build/build.sh sources gettop.sh / build_utils.sh from
           # absolute paths (/build/...) that only exist inside Google's Docker container.
           # On a bare self-hosted runner we invoke make directly instead.
-          CLANG_PREBUILT=$(ls -d prebuilts/clang/host/linux-x86/clang-* 2>/dev/null | sort | tail -1 || true)
-          if [ -z "$CLANG_PREBUILT" ]; then
-            echo "ERROR: No clang prebuilt found in prebuilts/clang/host/linux-x86/"
-            ls prebuilts/clang/host/linux-x86/ 2>/dev/null || true
+          
+          # Find the actual clang binary (may be clang, clang-14, clang-16, etc.)
+          # Search for any file named clang or clang-* under bin directories
+          CLANG_REL=$(find prebuilts/clang/host/linux-x86 -type f \( -name "clang" -o -name "clang-[0-9]*" \) 2>/dev/null | grep "/bin/clang" | sort | tail -1 || true)
+          if [ -z "$CLANG_REL" ]; then
+            echo "ERROR: No clang binary found in prebuilts/clang/host/linux-x86/"
+            ls -R prebuilts/clang/host/linux-x86/ 2>/dev/null || true
             exit 1
           fi
-          CLANG_BIN="$(pwd)/$CLANG_PREBUILT/bin"
-          echo "[+] Clang bin directory: $CLANG_BIN"
-          ls "$CLANG_BIN/clang"* 2>/dev/null | head -5 || true
-
-          # Find the actual clang binary (may be clang-14, clang-16, etc.)
-          CLANG_EXEC=$(ls "$CLANG_BIN/clang" 2>/dev/null || ls "$CLANG_BIN/clang-"[0-9]* 2>/dev/null | sort | tail -1 || true)
-          if [ -z "$CLANG_EXEC" ]; then
-            echo "ERROR: No clang binary found in $CLANG_BIN"
-            ls "$CLANG_BIN/" | head -20
-            exit 1
-          fi
+          CLANG_EXEC="$(pwd)/$CLANG_REL"
           echo "[+] Found clang binary: $CLANG_EXEC"
+          
+          CLANG_BIN=$(dirname "$CLANG_EXEC")
+          echo "[+] Clang bin directory: $CLANG_BIN"
 
           # Ensure 'clang' symlink exists so Kconfig's $(shell clang ...) can find it
           if [ ! -e "$CLANG_BIN/clang" ]; then
