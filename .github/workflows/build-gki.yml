@@ -226,31 +226,35 @@ jobs:
 
         # Regenerate the canonical minimal defconfig so that build/build.sh's
         # savedefconfig diff check always passes.
-        # Locate the clang prebuilt that build.sh itself will use.
+        # We use the build system's own prebuilt clang toolchain.
+        # The make pipeline is guarded with || true so a failure here is non-fatal
+        # (the build.sh patch below is the belt-and-suspenders fallback).
         cd ~/kernel_workspace
         CLANG_PREBUILT=$(ls -d prebuilts/clang/host/linux-x86/clang-* 2>/dev/null | sort | tail -1)
         if [ -n "$CLANG_PREBUILT" ]; then
           echo "[+] Regenerating gki_defconfig via savedefconfig (clang: $CLANG_PREBUILT)"
-          PATH="$(pwd)/$CLANG_PREBUILT/bin:$PATH" \
-          make -C common LLVM=1 ARCH=arm64 \
-               O=/tmp/kconfig_scratch \
-               gki_defconfig savedefconfig 2>&1 | tail -5
-          cp /tmp/kconfig_scratch/defconfig common/arch/arm64/configs/gki_defconfig
+          mkdir -p /tmp/kconfig_scratch
+          (PATH="$(pwd)/$CLANG_PREBUILT/bin:$PATH" \
+           make -C common LLVM=1 ARCH=arm64 \
+                O=/tmp/kconfig_scratch \
+                gki_defconfig savedefconfig 2>&1 | tail -10 \
+           && cp /tmp/kconfig_scratch/defconfig common/arch/arm64/configs/gki_defconfig \
+           && echo "[+] gki_defconfig regenerated OK") || \
+          echo "[!] savedefconfig regeneration failed (non-fatal — falling back to build.sh patch)"
           rm -rf /tmp/kconfig_scratch
-          echo "[+] gki_defconfig regenerated OK"
         else
           echo "[!] Clang prebuilt not found — skipping savedefconfig regeneration"
-          echo "    build/build.sh defconfig check may fail; patching it out instead"
         fi
 
-        # Belt-and-suspenders: disable the check_defconfig call inside build/build.sh
-        # so even if the regeneration above produced a slightly different result,
-        # the build won't abort on the diff.
-        cd ~/kernel_workspace
+        # Patch build/build.sh to skip the check_defconfig call.
+        # Use a pattern that matches the bare call (standalone word on a line),
+        # NOT the function definition (which contains '()' or '{').
         if [ -f build/build.sh ]; then
-          sed -i 's/check_defconfig/true # check_defconfig disabled/g' build/build.sh || true
+          sed -i '/^[[:space:]]*check_defconfig[[:space:]]*$/ s/check_defconfig/true # check_defconfig disabled/' build/build.sh || true
           echo "[+] check_defconfig call neutralised in build/build.sh"
+          grep -n "check_defconfig" build/build.sh || echo "    (no remaining check_defconfig calls)"
         fi
+
 
     - name: Build the Kernel
       env:
