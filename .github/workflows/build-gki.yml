@@ -95,47 +95,62 @@ jobs:
         echo "$HOME/bin" >> $GITHUB_PATH
 
     - name: Initialize and Sync Kernel Source
+      env:
+        MANIFEST_BRANCH: ${{ env.MANIFEST_BRANCH }}
+        TARGET_COMMIT: ${{ env.TARGET_COMMIT }}
       run: |
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
 
         repo init -u https://android.googlesource.com/kernel/manifest \
-          -b ${{ env.MANIFEST_BRANCH }} --depth=1
+          -b "$MANIFEST_BRANCH" --depth=1
 
-        # Fix #8: incremental sync — no --force-sync so cached objects are reused
-        repo sync -c -j$(nproc) --no-clone-bundle
+        # If we need a specific commit, sync without depth limit for the common repo
+        # so that we can later fetch arbitrary historical commits.
+        if [ -n "$TARGET_COMMIT" ]; then
+          # Sync with force to avoid stale checkout conflicts on re-runs
+          repo sync -c -j$(nproc) --no-clone-bundle --force-sync
+        else
+          repo sync -c -j$(nproc) --no-clone-bundle
+        fi
 
-        if [ -n "${{ env.TARGET_COMMIT }}" ]; then
-          echo "[+] Pinning to exact KMI source snapshot: ${{ env.TARGET_COMMIT }}"
+        if [ -n "$TARGET_COMMIT" ]; then
+          echo "[+] Pinning to exact KMI source snapshot: $TARGET_COMMIT"
           cd ~/kernel_workspace/common
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
 
-          # Fix #5a: delete stale orphan branch so re-runs don't fail
-          git branch -D "stock-kmi-${{ env.TARGET_COMMIT }}" 2>/dev/null || true
+          # Delete stale branch from previous runs so re-runs don't fail
+          git branch -D "stock-kmi-${TARGET_COMMIT}" 2>/dev/null || true
 
-          # Fix #5b: prefer direct fetch — preserves git history → correct UTS_VERSION / uname -r
-          if git fetch --depth=1 origin "${{ env.TARGET_COMMIT }}" 2>/dev/null; then
-            git checkout -b "stock-kmi-${{ env.TARGET_COMMIT }}" FETCH_HEAD
-            echo "[+] Pinned via git fetch (history intact): ${{ env.TARGET_COMMIT }}"
+          # Unshallow first so we can fetch historical commits
+          git fetch --unshallow origin 2>/dev/null || true
+
+          # Try to fetch the exact commit by hash
+          if git fetch --depth=1 origin "$TARGET_COMMIT" 2>/dev/null; then
+            git checkout -b "stock-kmi-${TARGET_COMMIT}" FETCH_HEAD
+            echo "[+] Pinned via git fetch (history intact): $TARGET_COMMIT"
           else
             # Fall back to Gitiles archive (no history, but exact tree content)
             echo "[!] Direct fetch rejected by upstream; falling back to Gitiles archive."
-            git checkout --orphan "stock-kmi-${{ env.TARGET_COMMIT }}"
+            git checkout --orphan "stock-kmi-${TARGET_COMMIT}"
             find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
             curl -LSs \
-              "https://android.googlesource.com/kernel/common/+archive/${{ env.TARGET_COMMIT }}.tar.gz" \
+              "https://android.googlesource.com/kernel/common/+archive/${TARGET_COMMIT}.tar.gz" \
               | tar -xz
             git add -A
-            git commit -m "Import stock KMI source ${{ env.TARGET_COMMIT }}"
-            echo "[+] Imported stock KMI source via archive: ${{ env.TARGET_COMMIT }}"
+            git commit -m "Import stock KMI source ${TARGET_COMMIT}"
+            echo "[+] Imported stock KMI source via archive: $TARGET_COMMIT"
           fi
         fi
 
     - name: Apply SUSFS v2.1.0+ Patches
+      env:
+        SUSFS_BRANCH: ${{ env.SUSFS_BRANCH }}
+        SUSFS_PATCH: ${{ env.SUSFS_PATCH }}
       run: |
         cd ~/kernel_workspace
-        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
+        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
 
         cd common
         git reset --hard HEAD
@@ -144,7 +159,7 @@ jobs:
         # Fix #2: removed || true — a failed patch must abort the build, not silently continue
         cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
         cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
-        patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }}
+        patch -p1 < "../susfs4ksu/kernel_patches/${SUSFS_PATCH}"
 
         if ! grep -q 'CONFIG_KSU_SUSFS_SUS_MOUNT' fs/namespace.c; then
           sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
@@ -209,10 +224,12 @@ jobs:
         } >> "$DEFCONFIG"
 
     - name: Build the Kernel
+      env:
+        GKI_VERSION: ${{ env.GKI_VERSION }}
       run: |
         cd ~/kernel_workspace
 
-        if [ "${{ env.GKI_VERSION }}" = "6.1" ]; then
+        if [ "$GKI_VERSION" = "6.1" ]; then
           # Fix #4: android14-6.1 uses Kleaf (Bazel) — build/build.sh is absent / exits 1
           # Output lands in out/dist/Image
           LTO=thin tools/bazel run //common:kernel_aarch64_dist -- \
@@ -226,12 +243,15 @@ jobs:
         fi
 
     - name: Package with AnyKernel3
+      env:
+        GKI_VERSION: ${{ env.GKI_VERSION }}
+        INPUT_DEVICE: ${{ github.event.inputs.device }}
       run: |
         cd ~/kernel_workspace
         git clone https://github.com/MoonShadowKeeper/AnyKernel3.git -b master AnyKernel3
         rm -rf AnyKernel3/.git
 
-        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" \
+        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${GKI_VERSION} (SukiSU-Ultra + SUSFS)/" \
           AnyKernel3/anykernel.sh
 
         # Fix #9: abort immediately if Image is missing — no silent empty-copy
@@ -242,14 +262,14 @@ jobs:
         # Fix #13: collect .config for artifact upload
         KERNEL_CONFIG=$(find out -name ".config" | head -n 1)
         if [ -n "$KERNEL_CONFIG" ]; then
-          cp "$KERNEL_CONFIG" "kernel-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.config"
+          cp "$KERNEL_CONFIG" "kernel-${INPUT_DEVICE}-GKI-${GKI_VERSION}.config"
         else
           echo "WARNING: .config not found; skipping config artifact"
         fi
 
         # Fix #10: use '.' instead of '*' so dotfiles are included; exclude any stray .git
         cd AnyKernel3
-        zip -r9 "../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip" \
+        zip -r9 "../AnyKernel3-${INPUT_DEVICE}-GKI-${GKI_VERSION}.zip" \
           . -x "*.git*"
         cd ..
 
@@ -265,3 +285,4 @@ jobs:
       with:
         name: kernel-config-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
         path: ~/kernel_workspace/kernel-*.config
+
