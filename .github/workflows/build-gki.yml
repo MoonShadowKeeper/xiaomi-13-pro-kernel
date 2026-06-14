@@ -49,8 +49,11 @@ jobs:
           echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
         fi
 
-    - name: Clean Workspace
+    - name: Clean Workspace & Locks
       run: |
+        # Clear out any stale git locks from previously cancelled runs!
+        find ~/kernel_workspace -name "*.lock" -delete || true
+        
         rm -rf ~/kernel_workspace/out
         rm -rf ~/kernel_workspace/susfs4ksu
         rm -rf ~/kernel_workspace/AnyKernel3
@@ -203,19 +206,6 @@ jobs:
         rm -rf AnyKernel3/.git
         
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
-        
-        # Add beautiful ASCII Banner
-        cat << 'EOF' >> AnyKernel3/anykernel.sh
-        ui_print " "
-        ui_print "       . * .       "
-        ui_print "   *   .  *      * "
-        ui_print "  .  * 🌙 *  .    "
-        ui_print " *    .    *   *   "
-        ui_print "    .   *    .     "
-        ui_print " MoonShadow Kernel "
-        ui_print "   HyperOS Ready   "
-        ui_print " "
-        EOF
         
         mkdir -p AnyKernel3/ramdisk/overlay.d/init
         cat << 'EOF' > AnyKernel3/ramdisk/overlay.d/init/kprofiles_fix.rc
