@@ -24,55 +24,60 @@ jobs:
   build:
     name: Build Kernel
     runs-on: self-hosted
+    # Fix #11: enforce -euo pipefail for every run: block
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
 
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
     - name: Set Environment Variables
+      # Fix #12: inputs go through env vars, not raw ${{ }} interpolation in shell
+      env:
+        INPUT_DEVICE: ${{ github.event.inputs.device }}
+        INPUT_KMI_VERSION: ${{ github.event.inputs.kmi_version }}
+        INPUT_TARGET_COMMIT: ${{ github.event.inputs.target_commit }}
       run: |
-        if [ "${{ github.event.inputs.device }}" == "Xiaomi-14T-Pro" ]; then
+        if [ "$INPUT_DEVICE" == "Xiaomi-14T-Pro" ]; then
           DEFAULT_MANIFEST="common-android14-6.1"
-          echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
+          echo "SUSFS_BRANCH=gki-android14-6.1"          >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
-          echo "GKI_VERSION=6.1" >> $GITHUB_ENV
+          echo "GKI_VERSION=6.1"                          >> $GITHUB_ENV
           DEFAULT_TARGET_COMMIT=""
         else
-          # common-android13-5.15-2024-11 is a Google build label/path from stock boot, not a repo manifest branch.
           DEFAULT_MANIFEST="common-android13-5.15"
-          echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
+          echo "SUSFS_BRANCH=gki-android13-5.15"          >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
-          echo "GKI_VERSION=5.15" >> $GITHUB_ENV
+          echo "GKI_VERSION=5.15"                          >> $GITHUB_ENV
           DEFAULT_TARGET_COMMIT="bf0a81a7f319"
         fi
 
-        if [ -n "${{ github.event.inputs.kmi_version }}" ]; then
-          echo "MANIFEST_BRANCH=${{ github.event.inputs.kmi_version }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_KMI_VERSION" ]; then
+          echo "MANIFEST_BRANCH=$INPUT_KMI_VERSION"      >> $GITHUB_ENV
         else
-          echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
+          echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST"       >> $GITHUB_ENV
         fi
 
-        if [ -n "${{ github.event.inputs.target_commit }}" ]; then
-          echo "TARGET_COMMIT=${{ github.event.inputs.target_commit }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_TARGET_COMMIT" ]; then
+          echo "TARGET_COMMIT=$INPUT_TARGET_COMMIT"       >> $GITHUB_ENV
         else
-          echo "TARGET_COMMIT=$DEFAULT_TARGET_COMMIT" >> $GITHUB_ENV
+          echo "TARGET_COMMIT=$DEFAULT_TARGET_COMMIT"    >> $GITHUB_ENV
         fi
 
-    - name: Clean Workspace & Locks
+    - name: Clean Workspace
       run: |
-        # Clear out any stale git locks from previously cancelled runs!
-        find ~/kernel_workspace -name "*.lock" -delete || true
+        # Remove stale git locks from previously cancelled runs
+        find ~/kernel_workspace -name "*.lock" -delete 2>/dev/null || true
 
+        # Fix #8: keep common/ for incremental sync — only clean build outputs
         rm -rf ~/kernel_workspace/out
-        rm -rf ~/kernel_workspace/common
         rm -rf ~/kernel_workspace/susfs4ksu
         rm -rf ~/kernel_workspace/AnyKernel3
 
-    - name: Free Disk Space
-      run: |
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo apt-get clean
-        df -h
+    # Fix #7: "Free Disk Space" step removed — paths don't exist on self-hosted runner
+    # Dependencies installed once during runner provisioning via setup.sh
 
     - name: Install Dependencies
       run: |
@@ -94,25 +99,37 @@ jobs:
         mkdir -p ~/kernel_workspace
         cd ~/kernel_workspace
 
-        repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
-        repo sync -c -j$(nproc) --no-clone-bundle --force-sync
+        repo init -u https://android.googlesource.com/kernel/manifest \
+          -b ${{ env.MANIFEST_BRANCH }} --depth=1
+
+        # Fix #8: incremental sync — no --force-sync so cached objects are reused
+        repo sync -c -j$(nproc) --no-clone-bundle
 
         if [ -n "${{ env.TARGET_COMMIT }}" ]; then
-          echo "[+] Applying exact KMI source snapshot: ${{ env.TARGET_COMMIT }}"
+          echo "[+] Pinning to exact KMI source snapshot: ${{ env.TARGET_COMMIT }}"
           cd ~/kernel_workspace/common
-
-          # GoogleSource/Gitiles exposes this commit in the web UI, but git-upload-pack
-          # may reject raw SHA fetches ("couldn't find remote ref <sha>").
-          # Use the official Gitiles archive endpoint instead, then create a local
-          # commit so later git reset/clean steps work normally.
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
-          git checkout --orphan stock-kmi-${{ env.TARGET_COMMIT }} || true
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          curl -L "https://android.googlesource.com/kernel/common/+archive/${{ env.TARGET_COMMIT }}.tar.gz" | tar -xz
-          git add -A
-          git commit -m "Import stock KMI source ${{ env.TARGET_COMMIT }}"
-          echo "[+] Imported stock KMI source snapshot: ${{ env.TARGET_COMMIT }}"
+
+          # Fix #5a: delete stale orphan branch so re-runs don't fail
+          git branch -D "stock-kmi-${{ env.TARGET_COMMIT }}" 2>/dev/null || true
+
+          # Fix #5b: prefer direct fetch — preserves git history → correct UTS_VERSION / uname -r
+          if git fetch --depth=1 origin "${{ env.TARGET_COMMIT }}" 2>/dev/null; then
+            git checkout -b "stock-kmi-${{ env.TARGET_COMMIT }}" FETCH_HEAD
+            echo "[+] Pinned via git fetch (history intact): ${{ env.TARGET_COMMIT }}"
+          else
+            # Fall back to Gitiles archive (no history, but exact tree content)
+            echo "[!] Direct fetch rejected by upstream; falling back to Gitiles archive."
+            git checkout --orphan "stock-kmi-${{ env.TARGET_COMMIT }}"
+            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            curl -LSs \
+              "https://android.googlesource.com/kernel/common/+archive/${{ env.TARGET_COMMIT }}.tar.gz" \
+              | tar -xz
+            git add -A
+            git commit -m "Import stock KMI source ${{ env.TARGET_COMMIT }}"
+            echo "[+] Imported stock KMI source via archive: ${{ env.TARGET_COMMIT }}"
+          fi
         fi
 
     - name: Apply SUSFS v2.1.0+ Patches
@@ -124,10 +141,10 @@ jobs:
         git reset --hard HEAD
         git clean -fdx
 
-        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
-        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
-
-        patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }} || true
+        # Fix #2: removed || true — a failed patch must abort the build, not silently continue
+        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
+        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
+        patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }}
 
         if ! grep -q 'CONFIG_KSU_SUSFS_SUS_MOUNT' fs/namespace.c; then
           sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
@@ -141,54 +158,72 @@ jobs:
     - name: Apply Sukisu Ultra
       run: |
         cd ~/kernel_workspace/common
+        # Issue #3: curl|bash left as-is (user decision); pinning to a tag is recommended when upstream stabilises
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
 
     - name: Apply Networking, ZRAM and GKI Features
       run: |
         cd ~/kernel_workspace/common
-        sed -i 's/check_defconfig//' build.config.gki || true
-        sed -i '/GKI_MODULES_LIST/d' build.config.gki.aarch64 || true
-        sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' build.config.gki || true
-        sed -i '/TRIM_NONLISTED_KMI/d' build.config.gki || true
+
+        # Fix #1: removed all KMI/ABI-breaking sed lines:
+        #   - KMI_SYMBOL_LIST_STRICT_MODE  (broke vendor module compatibility)
+        #   - TRIM_NONLISTED_KMI           (same)
+        #   - GKI_MODULES_LIST             (same)
+        #   - check_defconfig              (redundant with SKIP_DEFCONFIG_CHECK below)
+        # SKIP_DEFCONFIG_CHECK bypasses the defconfig consistency check without
+        # touching KMI strict-mode enforcement.
         sed -i 's/-dirty//' scripts/setlocalversion || true
         echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
 
         DEFCONFIG=arch/arm64/configs/gki_defconfig
-        echo "" >> $DEFCONFIG
-        echo "CONFIG_TCP_CONG_BBR=y" >> $DEFCONFIG
-        echo "CONFIG_DEFAULT_BBR=y" >> $DEFCONFIG
-        echo "CONFIG_NET_SCH_FQ=y" >> $DEFCONFIG
-        echo "CONFIG_WIREGUARD=y" >> $DEFCONFIG
-        echo "CONFIG_TMPFS_XATTR=y" >> $DEFCONFIG
-        echo "CONFIG_TMPFS_POSIX_ACL=y" >> $DEFCONFIG
-        echo "CONFIG_NTFS3_FS=y" >> $DEFCONFIG
-        echo "CONFIG_NTFS3_FS_POSIX_ACL=y" >> $DEFCONFIG
-        echo "CONFIG_EXFAT_FS=y" >> $DEFCONFIG
-        echo 'CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"' >> $DEFCONFIG
-        echo "CONFIG_LRU_GEN=y" >> $DEFCONFIG
-        echo "CONFIG_LRU_GEN_ENABLED=y" >> $DEFCONFIG
-        echo "CONFIG_LRU_GEN_STATS=y" >> $DEFCONFIG
-        echo "CONFIG_DAMON=y" >> $DEFCONFIG
-        echo "CONFIG_DAMON_VADDR=y" >> $DEFCONFIG
-        echo "CONFIG_DAMON_PADDR=y" >> $DEFCONFIG
-        echo "CONFIG_DAMON_RECLAIM=y" >> $DEFCONFIG
-        echo "CONFIG_CPU_IDLE_GOV_TEO=y" >> $DEFCONFIG
-        echo "CONFIG_ENERGY_MODEL=y" >> $DEFCONFIG
-        echo "CONFIG_SCHED_MC=y" >> $DEFCONFIG
-        echo "CONFIG_KPM=y" >> $DEFCONFIG
-
-        # --- ZRAM ZSTD TUNING ---
-        # Keep ZRAM and ZSMALLOC as modules (=m). GKI module list expects mm/zsmalloc.ko and drivers/block/zram/zram.ko.
-        echo "CONFIG_ZSMALLOC=m" >> $DEFCONFIG
-        echo "CONFIG_ZRAM=m" >> $DEFCONFIG
-        echo "CONFIG_CRYPTO_ZSTD=y" >> $DEFCONFIG
-        echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y" >> $DEFCONFIG
-        echo 'CONFIG_ZRAM_DEF_COMP="zstd"' >> $DEFCONFIG
+        {
+          echo ""
+          echo "CONFIG_TCP_CONG_BBR=y"
+          echo "CONFIG_DEFAULT_BBR=y"
+          echo "CONFIG_NET_SCH_FQ=y"
+          echo "CONFIG_WIREGUARD=y"
+          echo "CONFIG_TMPFS_XATTR=y"
+          echo "CONFIG_TMPFS_POSIX_ACL=y"
+          echo "CONFIG_NTFS3_FS=y"
+          echo "CONFIG_NTFS3_FS_POSIX_ACL=y"
+          echo "CONFIG_EXFAT_FS=y"
+          echo 'CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"'
+          echo "CONFIG_LRU_GEN=y"
+          echo "CONFIG_LRU_GEN_ENABLED=y"
+          echo "CONFIG_LRU_GEN_STATS=y"
+          echo "CONFIG_DAMON=y"
+          echo "CONFIG_DAMON_VADDR=y"
+          echo "CONFIG_DAMON_PADDR=y"
+          echo "CONFIG_DAMON_RECLAIM=y"
+          echo "CONFIG_CPU_IDLE_GOV_TEO=y"
+          echo "CONFIG_ENERGY_MODEL=y"
+          echo "CONFIG_SCHED_MC=y"
+          echo "CONFIG_KPM=y"
+          # Keep ZRAM/ZSMALLOC as modules — GKI module list expects them at mm/zsmalloc.ko
+          # and drivers/block/zram/zram.ko
+          echo "CONFIG_ZSMALLOC=m"
+          echo "CONFIG_ZRAM=m"
+          echo "CONFIG_CRYPTO_ZSTD=y"
+          echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y"
+          echo 'CONFIG_ZRAM_DEF_COMP="zstd"'
+        } >> "$DEFCONFIG"
 
     - name: Build the Kernel
       run: |
         cd ~/kernel_workspace
-        SKIP_DEFCONFIG_CHECK=1 LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
+
+        if [ "${{ env.GKI_VERSION }}" = "6.1" ]; then
+          # Fix #4: android14-6.1 uses Kleaf (Bazel) — build/build.sh is absent / exits 1
+          # Output lands in out/dist/Image
+          LTO=thin tools/bazel run //common:kernel_aarch64_dist -- \
+            --dist_dir="$(pwd)/out/dist"
+        else
+          # android13-5.15 uses the legacy build.sh
+          # Output lands in out/android*/dist/Image
+          SKIP_DEFCONFIG_CHECK=1 LTO=thin \
+            BUILD_CONFIG=common/build.config.gki.aarch64 \
+            build/build.sh
+        fi
 
     - name: Package with AnyKernel3
       run: |
@@ -196,13 +231,26 @@ jobs:
         git clone https://github.com/MoonShadowKeeper/AnyKernel3.git -b master AnyKernel3
         rm -rf AnyKernel3/.git
 
-        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
+        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" \
+          AnyKernel3/anykernel.sh
 
+        # Fix #9: abort immediately if Image is missing — no silent empty-copy
         KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
+        [ -n "$KERNEL_IMAGE" ] || { echo "ERROR: Image not found in out/ — build failed silently"; exit 1; }
         cp "$KERNEL_IMAGE" AnyKernel3/
 
+        # Fix #13: collect .config for artifact upload
+        KERNEL_CONFIG=$(find out -name ".config" | head -n 1)
+        if [ -n "$KERNEL_CONFIG" ]; then
+          cp "$KERNEL_CONFIG" "kernel-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.config"
+        else
+          echo "WARNING: .config not found; skipping config artifact"
+        fi
+
+        # Fix #10: use '.' instead of '*' so dotfiles are included; exclude any stray .git
         cd AnyKernel3
-        zip -r9 "../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip" *
+        zip -r9 "../AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}.zip" \
+          . -x "*.git*"
         cd ..
 
     - name: Upload AnyKernel3 Artifact
@@ -210,3 +258,10 @@ jobs:
       with:
         name: AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
         path: ~/kernel_workspace/AnyKernel3-*.zip
+
+    # Fix #13: publish .config so users and developers can verify every option
+    - name: Upload Kernel Config
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-config-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
+        path: ~/kernel_workspace/kernel-*.config
