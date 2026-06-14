@@ -52,6 +52,50 @@ jobs:
           echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
         fi
 
+        if [ -n "${{ github.event.inputs.target_commit }}" ]; then
+          echo "TARGET_COMMIT=${{ github.event.inputs.target_commit }}" >> $GITHUB_ENV
+        else
+          echo "TARGET_COMMIT=$DEFAULT_TARGET_COMMIT" >> $GITHUB_ENV
+        fi
+
+    - name: Clean Workspace & Locks
+      run: |
+        # Clear out any stale git locks from previously cancelled runs!
+        find ~/kernel_workspace -name "*.lock" -delete || true
+        
+        rm -rf ~/kernel_workspace/out
+        rm -rf ~/kernel_workspace/susfs4ksu
+        rm -rf ~/kernel_workspace/AnyKernel3
+
+    - name: Free Disk Space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+        df -h
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
+          zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
+          libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig \
+          python3 python-is-python3 bc lz4 libelf-dev libssl-dev
+
+    - name: Setup repo tool
+      run: |
+        mkdir -p ~/bin
+        curl -L https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Initialize and Sync Kernel Source
+      run: |
+        mkdir -p ~/kernel_workspace
+        cd ~/kernel_workspace
+        
+        repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
+        repo sync -c -j$(nproc) --no-clone-bundle --force-sync
+        
         if [ -n "${{ env.TARGET_COMMIT }}" ]; then
           echo "[+] Applying exact KMI source snapshot: ${{ env.TARGET_COMMIT }}"
           cd ~/kernel_workspace/common
