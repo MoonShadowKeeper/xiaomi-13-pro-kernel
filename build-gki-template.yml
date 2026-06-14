@@ -109,10 +109,9 @@ jobs:
               REMOTE_NAME="origin"
           fi
           
-          git fetch $REMOTE_NAME --unshallow 2>/dev/null || git fetch $REMOTE_NAME --depth=1000 || true
-          
-          if ! git cat-file -e ${{ env.TARGET_COMMIT }} 2>/dev/null; then
-            git fetch https://android.googlesource.com/kernel/common ${{ env.TARGET_COMMIT }} || true
+          # Fast path: fetch only the exact stock commit. Do NOT unshallow the whole AOSP history.
+          if ! git cat-file -e ${{ env.TARGET_COMMIT }}^{commit} 2>/dev/null; then
+            git fetch --depth=1 https://android.googlesource.com/kernel/common ${{ env.TARGET_COMMIT }}
           fi
           
           git checkout ${{ env.TARGET_COMMIT }}
