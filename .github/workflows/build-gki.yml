@@ -38,7 +38,8 @@ jobs:
           echo "GKI_VERSION=6.1" >> $GITHUB_ENV
           DEFAULT_TARGET_COMMIT=""
         else
-          DEFAULT_MANIFEST="common-android13-5.15-2024-11"
+          # common-android13-5.15-2024-11 is a Google build label/path from stock boot, not a repo manifest branch.
+          DEFAULT_MANIFEST="common-android13-5.15"
           echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
           echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
           echo "GKI_VERSION=5.15" >> $GITHUB_ENV
