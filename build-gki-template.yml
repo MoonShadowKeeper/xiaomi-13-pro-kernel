@@ -188,8 +188,8 @@ jobs:
         echo "CONFIG_KPM=y" >> $DEFCONFIG
         
         # --- ZRAM ZSTD TUNING ---
-        # Keep ZRAM as module (=m). GKI module list expects drivers/block/zram/zram.ko.
-        echo "CONFIG_ZSMALLOC=y" >> $DEFCONFIG
+        # Keep ZRAM and ZSMALLOC as modules (=m). GKI module list expects mm/zsmalloc.ko and drivers/block/zram/zram.ko.
+        echo "CONFIG_ZSMALLOC=m" >> $DEFCONFIG
         echo "CONFIG_ZRAM=m" >> $DEFCONFIG
         echo "CONFIG_CRYPTO_ZSTD=y" >> $DEFCONFIG
         echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y" >> $DEFCONFIG
