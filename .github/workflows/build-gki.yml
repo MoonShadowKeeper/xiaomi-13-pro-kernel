@@ -16,7 +16,7 @@ on:
         required: false
         default: ''
       target_commit:
-        description: 'Exact kernel commit hash (e.g. bf0a7f319). Leave empty for HEAD.'
+        description: 'Exact kernel commit hash. Leave empty for HEAD.'
         required: false
         default: ''
 
@@ -149,7 +149,7 @@ jobs:
           echo 'obj-$(CONFIG_KPROFILES) += kprofiles/' >> drivers/misc/Makefile
         fi
 
-    - name: Apply Networking and GKI Features
+    - name: Apply Networking, ZRAM and GKI Features
       run: |
         cd ~/kernel_workspace/common
         sed -i 's/check_defconfig//' build.config.gki || true
@@ -183,6 +183,13 @@ jobs:
         echo "CONFIG_SCHED_MC=y" >> $DEFCONFIG
         echo "CONFIG_KPROFILES=y" >> $DEFCONFIG
         echo "CONFIG_KPM=y" >> $DEFCONFIG
+        
+        # --- ZRAM ZSTD TUNING ---
+        echo "CONFIG_ZSMALLOC=y" >> $DEFCONFIG
+        echo "CONFIG_ZRAM=y" >> $DEFCONFIG
+        echo "CONFIG_CRYPTO_ZSTD=y" >> $DEFCONFIG
+        echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y" >> $DEFCONFIG
+        echo 'CONFIG_ZRAM_DEF_COMP="zstd"' >> $DEFCONFIG
 
     - name: Build the Kernel
       run: |
@@ -196,6 +203,19 @@ jobs:
         rm -rf AnyKernel3/.git
         
         sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
+        
+        # Add beautiful ASCII Banner
+        cat << 'EOF' >> AnyKernel3/anykernel.sh
+        ui_print " "
+        ui_print "       . * .       "
+        ui_print "   *   .  *      * "
+        ui_print "  .  * 🌙 *  .    "
+        ui_print " *    .    *   *   "
+        ui_print "    .   *    .     "
+        ui_print " MoonShadow Kernel "
+        ui_print "   HyperOS Ready   "
+        ui_print " "
+        EOF
         
         mkdir -p AnyKernel3/ramdisk/overlay.d/init
         cat << 'EOF' > AnyKernel3/ramdisk/overlay.d/init/kprofiles_fix.rc
