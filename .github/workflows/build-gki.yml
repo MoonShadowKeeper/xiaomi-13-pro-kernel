@@ -263,16 +263,46 @@ jobs:
         cd ~/kernel_workspace
 
         if [ "$GKI_VERSION" = "6.1" ]; then
-          # Fix #4: android14-6.1 uses Kleaf (Bazel) — build/build.sh is absent / exits 1
+          # android14-6.1 uses Kleaf (Bazel) — build/build.sh is absent / exits 1
           # Output lands in out/dist/Image
           LTO=thin tools/bazel run //common:kernel_aarch64_dist -- \
             --dist_dir="$(pwd)/out/dist"
         else
-          # android13-5.15 uses the legacy build.sh
-          # Output lands in out/android*/dist/Image
-          SKIP_DEFCONFIG_CHECK=1 LTO=thin \
-            BUILD_CONFIG=common/build.config.gki.aarch64 \
-            build/build.sh
+          # android13-5.15 — build/build.sh sources gettop.sh / build_utils.sh from
+          # absolute paths (/build/...) that only exist inside Google's Docker container.
+          # On a bare self-hosted runner we invoke make directly instead.
+          CLANG_PREBUILT=$(ls -d prebuilts/clang/host/linux-x86/clang-* 2>/dev/null | sort | tail -1)
+          if [ -z "$CLANG_PREBUILT" ]; then
+            echo "ERROR: No clang prebuilt found in prebuilts/clang/host/linux-x86/"
+            ls prebuilts/clang/host/linux-x86/ || true
+            exit 1
+          fi
+          echo "[+] Using clang: $CLANG_PREBUILT"
+
+          OUT_DIR="$(pwd)/out/android13-5.15/common"
+          mkdir -p "$OUT_DIR"
+
+          export PATH="$(pwd)/$CLANG_PREBUILT/bin:$PATH"
+
+          # Step 1: generate .config from gki_defconfig
+          make -C common -j$(nproc) \
+            LLVM=1 LLVM_IAS=1 \
+            ARCH=arm64 \
+            O="$OUT_DIR" \
+            gki_defconfig
+
+          # Step 2: build the kernel Image (LTO=thin via KCFLAGS)
+          make -C common -j$(nproc) \
+            LLVM=1 LLVM_IAS=1 \
+            ARCH=arm64 \
+            O="$OUT_DIR" \
+            KCFLAGS="-flto=thin" \
+            Image 2>&1 | tail -50
+
+          # Create dist directory with Image for packaging step
+          mkdir -p "$(pwd)/out/android13-5.15/dist"
+          cp "$OUT_DIR/arch/arm64/boot/Image" "$(pwd)/out/android13-5.15/dist/Image"
+          echo "[+] Kernel Image built and copied to dist/"
         fi
 
     - name: Package with AnyKernel3
