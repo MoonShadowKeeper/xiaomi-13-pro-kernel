@@ -1,0 +1,224 @@
+name: Build Custom GKI Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Target Device'
+        required: true
+        default: 'Xiaomi-13-Pro'
+        type: choice
+        options:
+          - Xiaomi-13-Pro
+          - Xiaomi-14T-Pro
+      kmi_version:
+        description: 'Specific KMI Branch (e.g. common-android14-6.1-2024-04). Leave empty for latest.'
+        required: false
+        default: ''
+      target_commit:
+        description: 'Exact kernel commit hash. Leave empty for HEAD.'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set Environment Variables
+      run: |
+        if [ "${{ github.event.inputs.device }}" == "Xiaomi-14T-Pro" ]; then
+          DEFAULT_MANIFEST="common-android14-6.1"
+          echo "SUSFS_BRANCH=gki-android14-6.1" >> $GITHUB_ENV
+          echo "SUSFS_PATCH=50_add_susfs_in_gki-android14-6.1.patch" >> $GITHUB_ENV
+          echo "GKI_VERSION=6.1" >> $GITHUB_ENV
+        else
+          DEFAULT_MANIFEST="common-android13-5.15"
+          echo "SUSFS_BRANCH=gki-android13-5.15" >> $GITHUB_ENV
+          echo "SUSFS_PATCH=50_add_susfs_in_gki-android13-5.15.patch" >> $GITHUB_ENV
+          echo "GKI_VERSION=5.15" >> $GITHUB_ENV
+        fi
+        
+        if [ -n "${{ github.event.inputs.kmi_version }}" ]; then
+          echo "MANIFEST_BRANCH=${{ github.event.inputs.kmi_version }}" >> $GITHUB_ENV
+        else
+          echo "MANIFEST_BRANCH=$DEFAULT_MANIFEST" >> $GITHUB_ENV
+        fi
+
+    - name: Clean Workspace & Locks
+      run: |
+        # Clear out any stale git locks from previously cancelled runs!
+        find ~/kernel_workspace -name "*.lock" -delete || true
+        
+        rm -rf ~/kernel_workspace/out
+        rm -rf ~/kernel_workspace/susfs4ksu
+        rm -rf ~/kernel_workspace/AnyKernel3
+
+    - name: Free Disk Space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo apt-get clean
+        df -h
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
+          zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
+          libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig \
+          python3 python-is-python3 bc lz4 libelf-dev libssl-dev
+
+    - name: Setup repo tool
+      run: |
+        mkdir -p ~/bin
+        curl -L https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Initialize and Sync Kernel Source
+      run: |
+        mkdir -p ~/kernel_workspace
+        cd ~/kernel_workspace
+        
+        repo init -u https://android.googlesource.com/kernel/manifest -b ${{ env.MANIFEST_BRANCH }} --depth=1
+        repo sync -c -j$(nproc) --no-clone-bundle --force-sync
+        
+        if [ -n "${{ github.event.inputs.target_commit }}" ]; then
+          cd common
+          echo "[+] Fetching and checking out exact KMI commit: ${{ github.event.inputs.target_commit }}"
+          
+          REMOTE_NAME="aosp"
+          if ! git remote get-url origin >/dev/null 2>&1; then
+              if git remote get-url aosp >/dev/null 2>&1; then
+                  REMOTE_NAME="aosp"
+              fi
+          else
+              REMOTE_NAME="origin"
+          fi
+          
+          git fetch $REMOTE_NAME --unshallow 2>/dev/null || git fetch $REMOTE_NAME --depth=1000 || true
+          
+          if ! git cat-file -e ${{ github.event.inputs.target_commit }} 2>/dev/null; then
+            git fetch https://android.googlesource.com/kernel/common ${{ github.event.inputs.target_commit }} || true
+          fi
+          
+          git checkout ${{ github.event.inputs.target_commit }}
+          echo "[+] Successfully checked out commit ${{ github.event.inputs.target_commit }}"
+        fi
+
+    - name: Apply SUSFS v2.1.0+ Patches
+      run: |
+        cd ~/kernel_workspace
+        git clone https://gitlab.com/simonpunk/susfs4ksu.git -b ${{ env.SUSFS_BRANCH }}
+        
+        cd common
+        git reset --hard HEAD
+        git clean -fdx
+        
+        cp -rv ../susfs4ksu/kernel_patches/fs/* fs/ || true
+        cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/ || true
+        
+        patch -p1 < ../susfs4ksu/kernel_patches/${{ env.SUSFS_PATCH }} || true
+        
+        if ! grep -q 'CONFIG_KSU_SUSFS_SUS_MOUNT' fs/namespace.c; then
+          sed -i 's/#include "pnode.h"/#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\n#include <linux\/susfs_def.h>\n#endif\n\n#include "pnode.h"/g' fs/namespace.c
+          sed -i 's/#include "internal.h"/#include "internal.h"\n\n#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\nextern bool susfs_is_current_ksu_domain(void);\nextern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\n\n#define CL_COPY_MNT_NS BIT(25)\n#endif/g' fs/namespace.c
+        fi
+        
+        if ! grep -q 'CONFIG_KSU_SUSFS_SUS_KSTAT' fs/proc/task_mmu.c; then
+          sed -i 's/#include <asm\/elf.h>/#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux\/susfs_def.h>\n#endif\n\n#include <asm\/elf.h>/g' fs/proc/task_mmu.c
+        fi
+
+    - name: Apply Sukisu Ultra
+      run: |
+        cd ~/kernel_workspace/common
+        curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
+
+    - name: Integrate KProfiles HyperOS Edition
+      run: |
+        cd ~/kernel_workspace/common
+        git clone https://github.com/MoonShadowKeeper/Kprofiles-HyperOS.git drivers/misc/kprofiles
+        rm -rf drivers/misc/kprofiles/.git
+        
+        if ! grep -q 'kprofiles' drivers/misc/Kconfig; then
+          sed -i '/endmenu/i source "drivers/misc/kprofiles/Kconfig"' drivers/misc/Kconfig
+        fi
+        
+        if ! grep -q 'kprofiles' drivers/misc/Makefile; then
+          echo 'obj-$(CONFIG_KPROFILES) += kprofiles/' >> drivers/misc/Makefile
+        fi
+
+    - name: Apply Networking, ZRAM and GKI Features
+      run: |
+        cd ~/kernel_workspace/common
+        sed -i 's/check_defconfig//' build.config.gki || true
+        sed -i '/GKI_MODULES_LIST/d' build.config.gki.aarch64 || true
+        sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' build.config.gki || true
+        sed -i '/TRIM_NONLISTED_KMI/d' build.config.gki || true
+        sed -i 's/-dirty//' scripts/setlocalversion || true
+        echo "SKIP_DEFCONFIG_CHECK=1" >> $GITHUB_ENV
+        
+        DEFCONFIG=arch/arm64/configs/gki_defconfig
+        echo "" >> $DEFCONFIG
+        echo "CONFIG_TCP_CONG_BBR=y" >> $DEFCONFIG
+        echo "CONFIG_DEFAULT_BBR=y" >> $DEFCONFIG
+        echo "CONFIG_NET_SCH_FQ=y" >> $DEFCONFIG
+        echo "CONFIG_WIREGUARD=y" >> $DEFCONFIG
+        echo "CONFIG_TMPFS_XATTR=y" >> $DEFCONFIG
+        echo "CONFIG_TMPFS_POSIX_ACL=y" >> $DEFCONFIG
+        echo "CONFIG_NTFS3_FS=y" >> $DEFCONFIG
+        echo "CONFIG_NTFS3_FS_POSIX_ACL=y" >> $DEFCONFIG
+        echo "CONFIG_EXFAT_FS=y" >> $DEFCONFIG
+        echo 'CONFIG_EXFAT_DEFAULT_IOCHARSET="utf8"' >> $DEFCONFIG
+        echo "CONFIG_LRU_GEN=y" >> $DEFCONFIG
+        echo "CONFIG_LRU_GEN_ENABLED=y" >> $DEFCONFIG
+        echo "CONFIG_LRU_GEN_STATS=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON_VADDR=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON_PADDR=y" >> $DEFCONFIG
+        echo "CONFIG_DAMON_RECLAIM=y" >> $DEFCONFIG
+        echo "CONFIG_CPU_IDLE_GOV_TEO=y" >> $DEFCONFIG
+        echo "CONFIG_ENERGY_MODEL=y" >> $DEFCONFIG
+        echo "CONFIG_SCHED_MC=y" >> $DEFCONFIG
+        echo "CONFIG_KPROFILES=y" >> $DEFCONFIG
+        echo "CONFIG_KPM=y" >> $DEFCONFIG
+        
+        # --- ZRAM ZSTD TUNING ---
+        echo "CONFIG_ZSMALLOC=y" >> $DEFCONFIG
+        echo "CONFIG_ZRAM=y" >> $DEFCONFIG
+        echo "CONFIG_CRYPTO_ZSTD=y" >> $DEFCONFIG
+        echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y" >> $DEFCONFIG
+        echo 'CONFIG_ZRAM_DEF_COMP="zstd"' >> $DEFCONFIG
+
+    - name: Build the Kernel
+      run: |
+        cd ~/kernel_workspace
+        SKIP_DEFCONFIG_CHECK=1 LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
+
+    - name: Package with AnyKernel3
+      run: |
+        cd ~/kernel_workspace
+        git clone https://github.com/MoonShadowKeeper/AnyKernel3.git -b master AnyKernel3
+        rm -rf AnyKernel3/.git
+        
+        sed -i "s/kernel.string=.*/kernel.string=Custom GKI ${{ env.GKI_VERSION }} (SukiSU-Ultra + SUSFS)/" AnyKernel3/anykernel.sh
+        
+        mkdir -p AnyKernel3/ramdisk/overlay.d/init
+        cat << 'EOF' > AnyKernel3/ramdisk/overlay.d/init/kprofiles_fix.rc
+        on post-fs-data
+            wait /sys/module/kprofiles/parameters/auto_kp
+            write /sys/module/kprofiles/parameters/auto_kp 0
+        EOF
+        
+        KERNEL_IMAGE=$(find out -path "*/dist/Image" | head -n 1)
+        cp "$KERNEL_IMAGE" AnyKernel3/
+
+    - name: Upload AnyKernel3 Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AnyKernel3-${{ github.event.inputs.device }}-GKI-${{ env.GKI_VERSION }}
+        path: ~/kernel_workspace/AnyKernel3/
